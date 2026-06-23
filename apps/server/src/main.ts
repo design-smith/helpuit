@@ -24,6 +24,7 @@ import {
   resolveAdminToken,
   provisionManifest,
   provisionDocs,
+  autoSetupChatwoot,
 } from '@helpuit/composition'
 import { RateLimiter } from '@helpuit/budget'
 import type { BrowserDriver } from '@helpuit/reproduction'
@@ -32,6 +33,7 @@ import { Worker } from '@helpuit/queue'
 import { buildServer } from './server.js'
 import { ActivityBus } from './activity.js'
 import { isWeakEncryptionKey } from './setup/keys.js'
+import { tunnelRequested, tunnelPort, normalizePublicUrl, type TunnelHandle } from './tunnel/tunnel.js'
 
 /** Resolve the built operator-console SPA dir (apps/web/dist), or undefined if not built. */
 function resolveWebDir(): string | undefined {
@@ -50,6 +52,20 @@ const ALERT_INTERVAL_MS = 300_000 // evaluate operational alerts every 5 minutes
  * health/readiness, listen, and shut down gracefully.
  */
 async function main(): Promise<void> {
+  // Optional one-command public URL for local use: `pnpm start --tunnel` opens a
+  // Cloudflare quick tunnel and points HELPUIT_PUBLIC_URL at it BEFORE any config is
+  // read, so Chatwoot/GitHub webhooks + OAuth callbacks resolve to a reachable URL.
+  // The cloudflared wrapper is loaded lazily (external binary) — never on the
+  // default boot path. Online deploys set HELPUIT_PUBLIC_URL to a real domain instead.
+  let tunnel: TunnelHandle | undefined
+  if (tunnelRequested(process.argv, process.env)) {
+    const { startCloudflaredTunnel } = await import('./tunnel/cloudflared-tunnel.js')
+    tunnel = await startCloudflaredTunnel(tunnelPort(process.env))
+    process.env.HELPUIT_PUBLIC_URL = normalizePublicUrl(tunnel.url)
+    console.log(`\n🌐 Public URL (cloudflared tunnel): ${process.env.HELPUIT_PUBLIC_URL}`)
+    console.log('   Open the operator console at that URL. Keep this process running to keep the tunnel up.\n')
+  }
+
   // HELPUIT_CONFIG_PATH lets a container point at a mounted config; defaults to ./helpuit.config.yaml.
   // The DB url is env-only (it's needed before any config can be read). Open it,
   // then build the config/secret stores that layer over the file/env baseline.
@@ -94,6 +110,23 @@ async function main(): Promise<void> {
   const config = effective.config
   if (effective.missingSecrets.length > 0) {
     console.warn(`unset config/secrets (set them in the console → Settings): ${effective.missingSecrets.join(', ')}`)
+  }
+
+  // Behind the tunnel, (re)point the Chatwoot webhook at the CURRENT public URL so a
+  // connected inbox keeps delivering even though a quick-tunnel URL changes per run.
+  // Idempotent + best-effort: an unreachable Chatwoot is reported, never fatal.
+  if (tunnel !== undefined && config.chatwoot.apiToken !== '' && config.runtime.publicUrl !== undefined) {
+    const synced = await autoSetupChatwoot({
+      baseUrl: config.chatwoot.baseUrl,
+      token: config.chatwoot.apiToken,
+      accountId: config.chatwoot.accountId,
+      publicUrl: config.runtime.publicUrl,
+    })
+    console.log(
+      synced.ok
+        ? `Chatwoot webhook pointed at the tunnel — ${synced.detail}`
+        : `Chatwoot tunnel reconcile skipped — ${synced.detail}`,
+    )
   }
 
   // Provision the feature manifest so configuration actually turns on L3a static
@@ -316,6 +349,7 @@ async function main(): Promise<void> {
     clearInterval(alertTimer)
     await app.close() // stop accepting new webhooks
     await worker.stop() // drain in-flight investigations
+    if (tunnel !== undefined) await tunnel.stop().catch(() => {}) // tear down the tunnel
     handle.close()
     process.exit(0)
   }

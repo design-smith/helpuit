@@ -22,7 +22,8 @@ working agent.
 - **Node ≥ 20** and **[pnpm](https://pnpm.io/installation)** (`npm install -g pnpm`)
 - A **Chatwoot** instance (self-hosted or Cloud), a **GitHub** repo, and an **LLM provider** key
   (Anthropic / OpenAI / Bedrock / DeepSeek / any OpenAI-compatible or local model)
-- For webhooks during local dev: a tunnel such as `cloudflared` or `ngrok` (Step 7)
+- Nothing else for local use — `pnpm start --tunnel` (Step 5) brings up a public URL automatically
+  (downloads `cloudflared` on first run, no account), so Chatwoot/GitHub can reach you with no tunnel to install
 
 ---
 
@@ -69,31 +70,44 @@ hot-reload while developing the UI, see [Development](#development).)
 
 ### Step 5 — Start the server
 
+**Locally**, start with the tunnel so Chatwoot and GitHub can reach you:
+
 ```sh
-pnpm start
+pnpm start --tunnel
 ```
 
-It boots on `http://localhost:3000` (or the port you chose) and prints the console URL. Leave it running.
+This opens a Cloudflare quick tunnel (downloads `cloudflared` on first run — no account, no login), sets
+it as your public URL automatically, and prints it. **Open the console at that printed URL.** Keep the
+process running to keep the tunnel up.
+
+> Plain `pnpm start` also works if you don't need inbound webhooks yet. When **deployed**, you don't use
+> a tunnel at all — set `HELPUIT_PUBLIC_URL` to your real domain and run `pnpm start`. Same app, one knob.
 
 ### Step 6 — Log into the console
 
-Open **http://localhost:3000** and sign in with the **admin token** from Step 3. You'll land on the
-**Setup checklist** — the home screen that walks you through the remaining connectors, each with a
-one-click **Test**. The next steps are done entirely here, no file editing.
+Open the URL from Step 5 (the **tunnel URL** if you used `--tunnel`, otherwise **http://localhost:3000**)
+and sign in with the **admin token** from Step 3. You'll land on the **Setup checklist** — the home
+screen that walks you through the remaining connectors, each with a one-click **Test**. The next steps
+are done entirely here, no file editing.
 
-### Step 7 — Connect GitHub
+### Step 7 — Connect GitHub (your codebase)
 
-In the console → **Connections → GitHub**: connect a **GitHub App** (recommended) or paste a token,
-then **Test connection**. This lets Helpuit ground answers in your code and file issues.
+In the console → **Connections → GitHub**. This is what grounds answers in your code and files issues —
+two ways to connect:
 
-> A GitHub App needs an absolute callback/webhook URL, so make sure your **public URL** is set (you
-> entered it in Step 3). For local testing, start a tunnel and use the https URL it prints:
-> `cloudflared tunnel --url http://localhost:3000`.
+- **Personal access token (simplest, best for local):** paste a token, **Test connection**. No callback
+  or public URL needed — reading code and filing issues are outbound API calls.
+- **GitHub App:** a smoother multi-repo flow, but it needs a reachable **public URL** for its callback +
+  webhook, so start with `pnpm start --tunnel` first. Note: a quick-tunnel URL changes each run, which
+  breaks an App's baked-in URLs — for local, prefer the token.
 
 ### Step 8 — Connect Chatwoot
 
 In **Connections → Chatwoot**: paste your Chatwoot URL + API token, click **Validate & prefill** to
 pull your account/inbox, then **Auto-setup** to create the Agent Bot + webhook for you.
+
+> If you started with `pnpm start --tunnel`, Helpuit automatically re-points this webhook to the current
+> tunnel URL on every start — so a connected inbox keeps delivering even though the tunnel URL changes.
 
 ### Step 9 — Choose your LLM provider
 
@@ -165,6 +179,7 @@ at rest and never shown back. Two files back it:
 ```sh
 pnpm setup                       # first-run bootstrap (Step 3)
 pnpm start                       # run the server from source (tsx); auto-loads .env
+pnpm start:tunnel                # same, but opens a Cloudflare tunnel + wires HELPUIT_PUBLIC_URL (= pnpm start --tunnel)
 pnpm --filter @helpuit/web dev   # operator console with hot-reload on :5173 (proxies /admin → :3000)
 pnpm test                        # full unit + integration suite (real collaborators, no mocks)
 pnpm test:smoke                  # boots the real server process and probes /healthz, /readyz

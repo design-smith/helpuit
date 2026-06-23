@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@fastify/static": "^8.0.0",
     "@helpuit/budget": "workspace:*",
     "@helpuit/composition": "workspace:*",
     "@helpuit/config": "workspace:*",
@@ -19,7 +20,7 @@
     "@helpuit/queue": "workspace:*",
     "@helpuit/reproduction": "workspace:*",
     "@helpuit/runtime-config": "workspace:*",
-    "@fastify/static": "^8.0.0",
+    "cloudflared": "^0.7.1",
     "fastify": "^5.1.0"
   }
 }
