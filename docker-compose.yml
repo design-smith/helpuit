@@ -1,0 +1,30 @@
+# Helpuit — local + self-hosted deploy.
+#
+#   1. cp .env.example .env                       # fill in secrets
+#   2. cp helpuit.config.example.yaml helpuit.config.yaml   # set Chatwoot/GitHub/models/features
+#   3. docker compose up -d
+#
+# The worker runs in-process (single-tenant), so one service handles webhooks +
+# investigations. State persists in a SQLite file on the `helpuit-data` volume.
+services:
+  helpuit:
+    build: .
+    image: helpuit:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # SQLite on a persistent volume. (Postgres support lands with the Drizzle
+      # pg dialect; until then libsql's file: URL is the durable store.)
+      DATABASE_URL: file:/data/helpuit.db
+      HELPUIT_CONFIG_PATH: /config/helpuit.config.yaml
+      PORT: "3000"
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    volumes:
+      - helpuit-data:/data
+      - ./helpuit.config.yaml:/config/helpuit.config.yaml:ro
+
+volumes:
+  helpuit-data:

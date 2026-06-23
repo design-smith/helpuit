@@ -1,0 +1,25 @@
+# Dependencies are installed fresh inside the image.
+**/node_modules
+
+# VCS + local tooling
+.git
+.gitignore
+.vscode
+.idea
+
+# Secrets / local config must be provided at runtime (env_file + mounted config),
+# never baked into the image.
+.env
+.env.*
+!.env.example
+helpuit.config.yaml
+
+# Build / test artifacts not needed at runtime
+dist
+coverage
+*.log
+**/*.test.ts
+**/*.smoke.test.ts
+vitest.config.ts
+vitest.browser.config.ts
+vitest.smoke.config.ts

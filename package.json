@@ -1,0 +1,24 @@
+{
+  "name": "helpuit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Source-available autonomous AI support engineer.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "scripts": {
+    "setup": "tsx apps/server/src/setup.ts",
+    "start": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.run apps/server/src/main.ts",
+    "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:smoke": "vitest run --config vitest.smoke.config.ts",
+    "test:pg": "vitest run --config vitest.pg.config.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

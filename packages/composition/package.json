@@ -1,0 +1,36 @@
+{
+  "name": "@helpuit/composition",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@helpuit/account-investigation": "workspace:*",
+    "@helpuit/audit": "workspace:*",
+    "@helpuit/budget": "workspace:*",
+    "@helpuit/chatwoot": "workspace:*",
+    "@helpuit/config": "workspace:*",
+    "@helpuit/contracts": "workspace:*",
+    "@helpuit/crypto": "workspace:*",
+    "@helpuit/db": "workspace:*",
+    "@helpuit/dedup": "workspace:*",
+    "@helpuit/escalation": "workspace:*",
+    "@helpuit/feature-manifest": "workspace:*",
+    "@helpuit/github": "workspace:*",
+    "@helpuit/guidance": "workspace:*",
+    "@helpuit/identity": "workspace:*",
+    "@helpuit/lifecycle-sync": "workspace:*",
+    "@helpuit/static-investigation": "workspace:*",
+    "@helpuit/llm": "workspace:*",
+    "@helpuit/orchestrator": "workspace:*",
+    "@helpuit/query-routes": "workspace:*",
+    "@helpuit/reproduction": "workspace:*",
+    "@helpuit/runtime-config": "workspace:*",
+    "@helpuit/sandbox": "workspace:*",
+    "@helpuit/ticketing": "workspace:*"
+  }
+}

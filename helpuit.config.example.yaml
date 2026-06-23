@@ -1,0 +1,109 @@
+# =============================================================================
+# Helpuit — product configuration (NON-SECRET; commit this, per deployment)
+# -----------------------------------------------------------------------------
+# Copy to `helpuit.config.yaml` and describe YOUR product here. Secrets (tokens,
+# keys, passwords) live in `.env` — see `.env.example`. This file is validated on
+# boot; an invalid value fails fast and lists every problem.
+# =============================================================================
+
+# Your Chatwoot instance + the inbox Helpuit serves.
+chatwoot:
+  baseUrl: https://chat.yourcompany.com
+  accountId: 1
+  inboxId: 2
+
+# The repository Helpuit files issues into and reads code from.
+github:
+  owner: your-org
+  repo: your-product
+  productionBranch: main # the branch that is LIVE in production
+  auth: pat # "pat" | "app"
+
+# How the widget's user token is verified (secret/url live in .env or below).
+identity:
+  mode: hmac # "hmac" | "jwt" | "endpoint"
+  useridClaim: sub # (jwt mode) claim holding the user id
+  # jwksUrl: https://app.yourapp.com/.well-known/jwks.json   # required for jwt
+  # verifyUrl: https://api.yourapp.com/internal/verify-token  # required for endpoint
+
+# Level-2 account investigation: your app's read-only query endpoints.
+# (base URL here; QUERY_ROUTES_TOKEN in .env). Remove this block to skip L2.
+queryRoutes:
+  baseUrl: https://api.yourapp.com/internal/helpuit
+  routes:
+    - name: getPlan
+      method: GET
+      path: /users/:userId/plan
+      param: userId # bound from the VERIFIED identity, never from chat
+      columns: [plan, status]
+    - name: getFeatureFlags
+      method: GET
+      path: /users/:userId/flags
+      param: userId
+      columns: [exports_enabled, beta_enabled]
+    - name: getRecentErrors
+      method: GET
+      path: /users/:userId/errors
+      param: userId
+      columns: [code, message, occurred_at]
+
+# Level-3 reproduction target + how to log in + which sandbox roles exist.
+# (sandbox creds: SANDBOX_<ROLE>_USER / _PASS in .env)
+reproduction:
+  targetUrl: https://app.yourapp.com
+  environment: production
+  containerImage: helpuit/repro:latest
+  sandboxRoles: [admin, basic]
+  login:
+    mode: form # "form" | "api"
+    url: https://app.yourapp.com/login
+    userSelector: input[name="email"]
+    passSelector: input[name="password"]
+    submitSelector: button[type="submit"]
+
+# Feature manifest seed (Helpuit auto-drafts from the repo; this is the reviewed seed).
+features:
+  - key: billing
+    name: Billing
+    routes: [/settings/billing]
+    components: [BillingForm.vue]
+    endpoints: [POST /api/billing/update]
+    keywords: [card, invoice, payment]
+    sandboxRole: admin
+    irreversible: true # repro is blocked here (real side effects) → escalate instead
+  - key: team
+    name: Team members
+    routes: [/settings/team]
+    components: [TeamInvite.vue]
+    endpoints: [POST /api/team/invite]
+    keywords: [invite, member, seat]
+    sandboxRole: admin
+
+# Model-agnostic LLM tiers (keys per provider live in .env).
+models:
+  provider: anthropic # default provider for all tiers
+  tiers:
+    guidance: { model: claude-haiku-4-5 } # high-volume L1
+    reasoning: { model: claude-opus-4-8 } # account + static investigation
+    vision: { model: claude-opus-4-8 } # only when a repro must "see" the screen
+    # Mix providers per tier, e.g.:  guidance: { provider: openai-compatible, model: llama3 }
+
+# Founder policy toggles (env HELPUIT_* can override these).
+policy:
+  autopublish: draft # "draft" (you approve) | "auto" (file immediately)
+  resolutionMode: manual # "manual" | "auto" (auto-notify only on a "completed" close)
+  allowAnonymous: false # false = no token, no access
+  playwrightEnabled: true # master switch for dynamic reproduction
+
+# Cost guardrails (LLM output-token units; tune freely).
+budget:
+  perInvestigation: 200000
+  perDay: 5000000
+  perMonth: 100000000
+  repro:
+    maxSteps: 25
+    maxRetries: 2
+    timeoutMs: 120000
+  rateLimit:
+    max: 20
+    windowMs: 3600000

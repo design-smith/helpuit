@@ -1,0 +1,52 @@
+# Helpuit — LOCAL RUN config. Replace the placeholder hosts/ids with your real
+# Chatwoot + GitHub once you wire live integrations. Structural config only;
+# secrets live in the env file you boot with.
+
+chatwoot:
+  baseUrl: https://app.chatwoot.com   # <- replace with YOUR Chatwoot URL
+  accountId: 1                         # <- your account id
+  inboxId: 2                           # <- the inbox Helpuit serves
+
+github:
+  owner: your-org                      # <- replace
+  repo: your-repo                      # <- replace
+  productionBranch: main
+  auth: pat
+
+identity:
+  mode: hmac
+  useridClaim: sub
+
+# L2 (queryRoutes) omitted on purpose for first boot — add it back when you have
+# real read-only endpoints. Reproduction block is required by the schema.
+reproduction:
+  targetUrl: https://app.example.com   # <- your app under test
+  environment: production
+  containerImage: helpuit/repro:latest
+  sandboxRoles: [basic]
+  login:
+    mode: form
+    url: https://app.example.com/login
+    userSelector: input[name="email"]
+    passSelector: input[name="password"]
+    submitSelector: button[type="submit"]
+
+features: []
+
+models:
+  provider: anthropic
+  tiers:
+    guidance: { model: claude-haiku-4-5 }
+    reasoning: { model: claude-opus-4-8 }
+    vision: { model: claude-opus-4-8 }
+
+policy:
+  autopublish: draft
+  resolutionMode: manual
+  allowAnonymous: true        # true = a message with no token still flows into guidance (easy to test)
+  playwrightEnabled: false    # dynamic reproduction off for first boot
+
+budget:
+  perInvestigation: 200000
+  perDay: 5000000
+  perMonth: 100000000

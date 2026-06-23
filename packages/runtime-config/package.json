@@ -1,0 +1,18 @@
+{
+  "name": "@helpuit/runtime-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@helpuit/config": "workspace:*",
+    "@helpuit/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@helpuit/crypto": "workspace:*"
+  }
+}
