@@ -9,6 +9,18 @@ import type { ActivityBus } from './activity.js'
 /** Path prefixes that are API/ops — never served the SPA shell (kept as JSON 404s). */
 const API_PREFIXES = ['/admin', '/webhooks', '/healthz', '/readyz', '/metrics']
 
+/** Shown for browser navigations when the SPA isn't built — turns a cryptic 404 into a next step. */
+const CONSOLE_NOT_BUILT_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Helpuit</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1.25rem;line-height:1.6;color:#18181b">
+<h1 style="margin-bottom:.25rem">Helpuit API is running ✓</h1>
+<p style="color:#52525b">The operator console isn't built yet, so there's nothing to show at this URL.</p>
+<p>Build it once, then restart the server:</p>
+<pre style="background:#f4f4f5;padding:1rem;border-radius:8px;overflow:auto"><code>pnpm --filter @helpuit/web build
+pnpm start</code></pre>
+<p style="color:#52525b;font-size:.9rem">Health: <code>/healthz</code> · <code>/readyz</code>. Operator API under <code>/admin</code>.</p>
+</body></html>`
+
 /** Verify a GitHub webhook HMAC-SHA256 signature (`x-hub-signature-256`). */
 export function verifyGitHubSignature(
   rawBody: string,
@@ -321,6 +333,19 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       const wantsHtml = (request.headers.accept ?? '').includes('text/html')
       if (request.method === 'GET' && !isApi && wantsHtml) {
         return reply.sendFile('index.html')
+      }
+      reply.code(404)
+      return { status: 'not_found' }
+    })
+  } else {
+    // No SPA built: give browser navigations an actionable "build the console" page
+    // instead of a cryptic JSON 404; API typos still get a JSON 404.
+    app.setNotFoundHandler((request, reply) => {
+      const path = request.url.split('?')[0] ?? request.url
+      const isApi = API_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+      const wantsHtml = (request.headers.accept ?? '').includes('text/html')
+      if (request.method === 'GET' && !isApi && wantsHtml) {
+        return reply.code(200).type('text/html').send(CONSOLE_NOT_BUILT_HTML)
       }
       reply.code(404)
       return { status: 'not_found' }

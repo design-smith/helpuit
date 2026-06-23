@@ -26,6 +26,21 @@ describe('server', () => {
     expect(await res.json()).toEqual({ status: 'ok' })
   })
 
+  it('serves an actionable page at / when the operator console is not built', async () => {
+    const base = await listen(buildServer())
+    const res = await fetch(`${base}/`, { headers: { accept: 'text/html' } })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/html')
+    expect(await res.text()).toContain('pnpm --filter @helpuit/web build')
+  })
+
+  it('keeps API 404s as JSON even when the console is not built', async () => {
+    const base = await listen(buildServer())
+    const res = await fetch(`${base}/admin/nope`, { headers: { accept: 'text/html' } })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ status: 'not_found' })
+  })
+
   it('reports ready (200) when a real database ping succeeds', async () => {
     handle = await createDb(':memory:')
     const base = await listen(
