@@ -68,10 +68,17 @@ export class ManifestProvisioner {
  * config.features → auto-draft from the repo → docs-only. Boot-safe (degrades).
  */
 export function provisionManifest(config: HelpuitConfig, deps: { db: Db }): Promise<FeatureManifest | undefined> {
+  // Only auto-draft from the repo when GitHub is actually connected — otherwise the
+  // call is a guaranteed 401 (placeholder repo / no token) that just spams the logs
+  // on a fresh, unconfigured boot.
+  const builder =
+    config.github.token !== ''
+      ? new HeuristicManifestBuilder(new GitHubRepoSource(githubOptionsFromConfig(config)))
+      : undefined
   return new ManifestProvisioner({
     store: new DrizzleManifestStore(deps.db),
     features: config.features,
     ref: config.github.productionBranch,
-    builder: new HeuristicManifestBuilder(new GitHubRepoSource(githubOptionsFromConfig(config))),
+    builder,
   }).provision()
 }

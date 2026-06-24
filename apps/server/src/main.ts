@@ -62,8 +62,6 @@ async function main(): Promise<void> {
     const { startCloudflaredTunnel } = await import('./tunnel/cloudflared-tunnel.js')
     tunnel = await startCloudflaredTunnel(tunnelPort(process.env))
     process.env.HELPUIT_PUBLIC_URL = normalizePublicUrl(tunnel.url)
-    console.log(`\n🌐 Public URL (cloudflared tunnel): ${process.env.HELPUIT_PUBLIC_URL}`)
-    console.log('   Open the operator console at that URL. Keep this process running to keep the tunnel up.\n')
   }
 
   // HELPUIT_CONFIG_PATH lets a container point at a mounted config; defaults to ./helpuit.config.yaml.
@@ -108,9 +106,6 @@ async function main(): Promise<void> {
     secrets: vaultSecrets,
   })
   const config = effective.config
-  if (effective.missingSecrets.length > 0) {
-    console.warn(`unset config/secrets (set them in the console → Settings): ${effective.missingSecrets.join(', ')}`)
-  }
 
   // Behind the tunnel, (re)point the Chatwoot webhook at the CURRENT public URL so a
   // connected inbox keeps delivering even though a quick-tunnel URL changes per run.
@@ -221,23 +216,14 @@ async function main(): Promise<void> {
   // is ALWAYS reachable even with nothing configured (never a silent 404).
   const dashboard = new DrizzleDashboardService(handle.db) // also feeds the alert engine below
   const admin = await resolveAdminToken({ vault, envToken: process.env.HELPUIT_ADMIN_TOKEN })
-  if (admin.generated) {
-    console.log('\n──────────────────────────────────────────────')
-    console.log('  Helpuit operator console')
-    console.log(`  Generated admin token: ${admin.token}`)
-    console.log('  Log in with this token. Set HELPUIT_ADMIN_TOKEN to override; keep it safe.')
-    console.log('  Tip: run `pnpm setup` to persist this token + a strong key to .env (no more log-scraping).')
-    console.log('──────────────────────────────────────────────\n')
-  } else {
-    console.log(`Helpuit admin console ready (token from ${admin.source}).`)
-  }
   const webDir = resolveWebDir()
   if (webDir === undefined) {
-    console.warn('operator console UI not built (apps/web/dist missing) — serving API only')
+    console.warn('operator console UI not built — run `pnpm --filter @helpuit/web build` (serving API only for now).')
   }
 
   const app = buildServer({
-    logger: config.runtime.nodeEnv === 'production' ? true : { level: 'info' },
+    // Dev keeps the console quiet (warnings+errors only); production emits full structured logs.
+    logger: config.runtime.nodeEnv === 'production' ? true : { level: 'warn' },
     metrics,
     staticDir: webDir,
     admin: {
@@ -283,6 +269,20 @@ async function main(): Promise<void> {
 
   await app.listen({ port: config.runtime.port, host: '0.0.0.0' })
   worker.start()
+
+  // The one thing the operator needs at a glance: where it's running.
+  const rule = '─'.repeat(60)
+  console.log(`\n${rule}`)
+  console.log('  Helpuit is running')
+  console.log(`    Local:  http://localhost:${config.runtime.port}`)
+  if (config.runtime.publicUrl !== undefined && config.runtime.publicUrl !== '') {
+    console.log(`    Live:   ${config.runtime.publicUrl}${tunnel !== undefined ? '   (cloudflared tunnel)' : ''}`)
+  }
+  console.log(`    Log in: ${admin.generated ? admin.token : 'use your HELPUIT_ADMIN_TOKEN'}`)
+  if (effective.missingSecrets.length > 0) {
+    console.log(`    Connect next (in the console): ${effective.missingSecrets.join(', ')}`)
+  }
+  console.log(`${rule}\n`)
 
   // Data retention: sweep expired investigations (and their encrypted evidence)
   // at startup and daily. 0 days = keep forever (sweep disabled).

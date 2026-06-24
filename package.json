@@ -7,8 +7,8 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "setup": "tsx apps/server/src/setup.ts",
-    "start": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.run apps/server/src/main.ts",
-    "start:tunnel": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.run apps/server/src/main.ts --tunnel",
+    "start": "tsx --env-file-if-exists=.env apps/server/src/main.ts",
+    "start:tunnel": "tsx --env-file-if-exists=.env apps/server/src/main.ts --tunnel",
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",

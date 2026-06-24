@@ -132,8 +132,8 @@ describe('production server boot (real process, real entrypoint)', () => {
       // Registered even with no admin env var: unauthenticated → 401 (NOT a silent 404).
       expect((await fetch(`${base}/admin/overview`)).status).toBe(401)
 
-      // The generated token was printed once and actually logs in.
-      const match = /Generated admin token: (\S+)/.exec(stdout)
+      // The generated token is printed in the startup banner and actually logs in.
+      const match = /Log in: (\S+)/.exec(stdout)
       expect(match).not.toBeNull()
       const token = match![1]!
       const login = await fetch(`${base}/admin/login`, {
