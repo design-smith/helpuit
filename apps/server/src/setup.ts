@@ -17,9 +17,11 @@ async function ask(rl: Interface, label: string, def = ''): Promise<string> {
 async function prompt(existing: EnvMap): Promise<BootstrapAnswers> {
   const rl = createInterface({ input: stdin, output: stdout })
   try {
-    console.log('\nPublic URL — where Helpuit is reachable from the internet. Chatwoot & GitHub')
-    console.log('webhooks call back here, so set it before connecting them (a tunnel works for')
-    console.log('local dev: `cloudflared tunnel --url http://localhost:3000`). Blank is OK for now.')
+    console.log('\nPublic URL — where Helpuit is reachable from the internet (Chatwoot & GitHub')
+    console.log('webhooks/callbacks need it).')
+    console.log('  • Running LOCALLY? Leave this BLANK and start with `pnpm start --tunnel` — Helpuit')
+    console.log('    opens a public tunnel and fills this in for you automatically.')
+    console.log('  • DEPLOYED? Enter your domain, e.g. https://helpuit.yourcompany.com')
     const publicUrl = await ask(rl, 'HELPUIT_PUBLIC_URL', existing.HELPUIT_PUBLIC_URL ?? '')
 
     console.log('\nDatabase — leave the default for a zero-config local SQLite file, or use a remote')
@@ -58,9 +60,16 @@ function handoff(result: RunBootstrapResult): void {
   for (const warning of result.warnings) console.log(`\n  ⚠ ${warning}`)
 
   console.log('\n  Next:')
-  console.log('    1. pnpm start')
-  console.log(`    2. open http://localhost:${result.port}  and log in with the token above`)
-  console.log('    3. console → Setup checklist: connect GitHub, Chatwoot, the LLM provider, and identity')
+  console.log('    1. pnpm --filter @helpuit/web build       (build the console UI — once)')
+  if (result.publicUrl !== undefined && result.publicUrl !== '') {
+    console.log('    2. pnpm start')
+    console.log(`    3. open ${result.publicUrl}  and log in with the token above`)
+  } else {
+    console.log('    2. pnpm start --tunnel                    (LOCAL: opens a public URL automatically)')
+    console.log('         deployed instead? set HELPUIT_PUBLIC_URL to your domain and use `pnpm start`.')
+    console.log('    3. open the URL it prints  and log in with the token above')
+  }
+  console.log('    4. console → Setup checklist: connect GitHub (a token needs no tunnel), Chatwoot, the LLM, identity')
 
   if (result.missing.secrets.length > 0) {
     console.log(`\n  Still to connect in the console (${result.missing.secrets.length}): ${result.missing.secrets.join(', ')}`)
