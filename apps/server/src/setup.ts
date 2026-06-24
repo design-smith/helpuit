@@ -17,12 +17,20 @@ async function ask(rl: Interface, label: string, def = ''): Promise<string> {
 async function prompt(existing: EnvMap): Promise<BootstrapAnswers> {
   const rl = createInterface({ input: stdin, output: stdout })
   try {
-    console.log('\nPublic URL — where Helpuit is reachable from the internet (Chatwoot & GitHub')
-    console.log('webhooks/callbacks need it).')
-    console.log('  • Running LOCALLY? Leave this BLANK and start with `pnpm start --tunnel` — Helpuit')
-    console.log('    opens a public tunnel and fills this in for you automatically.')
-    console.log('  • DEPLOYED? Enter your domain, e.g. https://helpuit.yourcompany.com')
-    const publicUrl = await ask(rl, 'HELPUIT_PUBLIC_URL', existing.HELPUIT_PUBLIC_URL ?? '')
+    console.log('\nHow will Helpuit be reachable from the internet? Chatwoot & GitHub webhooks and')
+    console.log('callbacks need a public URL. Pick one:')
+    console.log('  1) Cloudflare tunnel — recommended for local. `pnpm start` opens a public URL')
+    console.log('     automatically every run; nothing to install or configure.')
+    console.log('  2) My own domain — for a deployed instance (e.g. https://helpuit.yourcompany.com).')
+    const choice = await ask(rl, 'Choose 1 (tunnel) or 2 (domain)', existing.HELPUIT_PUBLIC_URL ? '2' : '1')
+    let useTunnel = false
+    let publicUrl = ''
+    if (choice.trim().startsWith('2')) {
+      publicUrl = await ask(rl, 'HELPUIT_PUBLIC_URL', existing.HELPUIT_PUBLIC_URL ?? '')
+    } else {
+      useTunnel = true
+      console.log('  → Cloudflare tunnel selected. `pnpm start` will open it and set the URL for you.')
+    }
 
     console.log('\nDatabase — leave the default for a zero-config local SQLite file, or use a remote')
     console.log('libsql/Turso url ("libsql://…"). Postgres is not supported.')
@@ -38,7 +46,7 @@ async function prompt(existing: EnvMap): Promise<BootstrapAnswers> {
     const nodeEnv = await ask(rl, '\nNODE_ENV', existing.NODE_ENV ?? 'development')
     const port = await ask(rl, 'PORT', existing.PORT ?? '3000')
 
-    return { publicUrl, databaseUrl, databaseAuthToken, nodeEnv, port }
+    return { useTunnel, publicUrl, databaseUrl, databaseAuthToken, nodeEnv, port }
   } finally {
     rl.close()
   }
@@ -61,13 +69,15 @@ function handoff(result: RunBootstrapResult): void {
 
   console.log('\n  Next:')
   console.log('    1. pnpm --filter @helpuit/web build       (build the console UI — once)')
-  if (result.publicUrl !== undefined && result.publicUrl !== '') {
+  if (result.tunnelEnabled) {
+    console.log('    2. pnpm start                             (opens the Cloudflare tunnel automatically)')
+    console.log('    3. open the tunnel URL it prints  and log in with the token above')
+  } else if (result.publicUrl !== undefined && result.publicUrl !== '') {
     console.log('    2. pnpm start')
     console.log(`    3. open ${result.publicUrl}  and log in with the token above`)
   } else {
-    console.log('    2. pnpm start --tunnel                    (LOCAL: opens a public URL automatically)')
-    console.log('         deployed instead? set HELPUIT_PUBLIC_URL to your domain and use `pnpm start`.')
-    console.log('    3. open the URL it prints  and log in with the token above')
+    console.log('    2. pnpm start                             (or `pnpm start --tunnel` for a public URL)')
+    console.log(`    3. open http://localhost:${result.port}  and log in with the token above`)
   }
   console.log('    4. console → Setup checklist: connect GitHub (a token needs no tunnel), Chatwoot, the LLM, identity')
 
@@ -99,6 +109,7 @@ async function main(): Promise<void> {
   // Non-interactive (Docker/CI): take everything from the environment, no prompts.
   const answers: BootstrapAnswers = nonInteractive
     ? {
+        useTunnel: process.env.HELPUIT_TUNNEL === '1',
         publicUrl: process.env.HELPUIT_PUBLIC_URL,
         databaseUrl: process.env.DATABASE_URL,
         databaseAuthToken: process.env.DATABASE_AUTH_TOKEN,

@@ -53,7 +53,8 @@ This one-time wizard prepares everything the app needs to boot. It:
 - generates a strong **`HELPUIT_ENCRYPTION_KEY`** (seals the secret vault) — and never overwrites an
   existing strong one, since rotating it would make stored secrets unreadable;
 - generates a stable **`HELPUIT_ADMIN_TOKEN`** for logging into the console;
-- asks for your **public URL**, **database** (press Enter for a local SQLite file), **`NODE_ENV`**, and **port**;
+- asks **how Helpuit is reachable** — the built-in **Cloudflare tunnel** (local) or **your own domain**
+  (deployed) — plus **database** (press Enter for a local SQLite file), **`NODE_ENV`**, and **port**;
 - writes your **`.env`** (backing up any previous one) and seeds a valid **`helpuit.config.yaml`**.
 
 **Copy the admin token it prints at the end — you'll log in with it in Step 6.** Re-running `pnpm setup`
@@ -70,18 +71,15 @@ hot-reload while developing the UI, see [Development](#development).)
 
 ### Step 5 — Start the server
 
-**Locally**, start with the tunnel so Chatwoot and GitHub can reach you:
-
 ```sh
-pnpm start --tunnel
+pnpm start
 ```
 
-This opens a Cloudflare quick tunnel (downloads `cloudflared` on first run — no account, no login), sets
-it as your public URL automatically, and prints it. **Open the console at that printed URL.** Keep the
-process running to keep the tunnel up.
+If you chose the **tunnel** in setup, this opens a Cloudflare quick tunnel (downloads `cloudflared` on
+first run — no account, no login), sets it as your public URL, and prints it — **open the console at that
+printed URL**. If you chose a **domain**, it uses that. Keep the process running.
 
-> Plain `pnpm start` also works if you don't need inbound webhooks yet. When **deployed**, you don't use
-> a tunnel at all — set `HELPUIT_PUBLIC_URL` to your real domain and run `pnpm start`. Same app, one knob.
+> You can force a tunnel on any run with `pnpm start --tunnel`, regardless of the saved choice.
 
 ### Step 6 — Log into the console
 

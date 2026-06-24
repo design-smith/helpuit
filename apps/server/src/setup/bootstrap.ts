@@ -6,6 +6,8 @@ import { readFileIfExists, writeEnvFileWithBackup, ensureConfigYaml } from './io
 
 /** The launch-critical answers the wizard collects. All optional — blank = leave alone. */
 export interface BootstrapAnswers {
+  /** Use the built-in Cloudflare tunnel for the public URL (persists HELPUIT_TUNNEL=1). Wins over publicUrl. */
+  useTunnel?: boolean
   publicUrl?: string
   databaseUrl?: string
   databaseAuthToken?: string
@@ -75,7 +77,11 @@ export function planBootstrapEnv(
   else if (blank(existing.NODE_ENV)) updates.NODE_ENV = 'development'
 
   if (!blank(answers.port)) updates.PORT = answers.port!.trim()
-  if (!blank(answers.publicUrl)) updates.HELPUIT_PUBLIC_URL = answers.publicUrl!.trim()
+
+  // Reachability: the built-in tunnel (persisted as HELPUIT_TUNNEL=1 so `pnpm start`
+  // auto-tunnels, no flag) OR an explicit domain. The tunnel choice wins.
+  if (answers.useTunnel) updates.HELPUIT_TUNNEL = '1'
+  else if (!blank(answers.publicUrl)) updates.HELPUIT_PUBLIC_URL = answers.publicUrl!.trim()
 
   if (!blank(answers.databaseUrl)) {
     const url = answers.databaseUrl!.trim()
@@ -119,6 +125,8 @@ export interface RunBootstrapResult {
   warnings: string[]
   missing: { secrets: string[]; structural: string[] }
   publicUrl?: string
+  /** The operator chose the built-in tunnel (HELPUIT_TUNNEL=1) for the public URL. */
+  tunnelEnabled: boolean
   port: number
 }
 
@@ -167,6 +175,7 @@ export async function runBootstrap(options: RunBootstrapOptions): Promise<RunBoo
     warnings,
     missing: splitMissing(effective.missingSecrets),
     publicUrl: effective.config.runtime.publicUrl,
+    tunnelEnabled: plan.env.HELPUIT_TUNNEL === '1',
     port: effective.config.runtime.port,
   }
 }
