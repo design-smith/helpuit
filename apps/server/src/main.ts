@@ -33,7 +33,7 @@ import { Worker } from '@helpuit/queue'
 import { buildServer } from './server.js'
 import { ActivityBus } from './activity.js'
 import { isWeakEncryptionKey } from './setup/keys.js'
-import { tunnelRequested, tunnelPort, normalizePublicUrl, type TunnelHandle } from './tunnel/tunnel.js'
+import { RESTART_EXIT_CODE } from './supervisor-loop.js'
 
 /** Resolve the built operator-console SPA dir (apps/web/dist), or undefined if not built. */
 function resolveWebDir(): string | undefined {
@@ -52,17 +52,12 @@ const ALERT_INTERVAL_MS = 300_000 // evaluate operational alerts every 5 minutes
  * health/readiness, listen, and shut down gracefully.
  */
 async function main(): Promise<void> {
-  // Optional one-command public URL for local use: `pnpm start --tunnel` opens a
-  // Cloudflare quick tunnel and points HELPUIT_PUBLIC_URL at it BEFORE any config is
-  // read, so Chatwoot/GitHub webhooks + OAuth callbacks resolve to a reachable URL.
-  // The cloudflared wrapper is loaded lazily (external binary) — never on the
-  // default boot path. Online deploys set HELPUIT_PUBLIC_URL to a real domain instead.
-  let tunnel: TunnelHandle | undefined
-  if (tunnelRequested(process.argv, process.env)) {
-    const { startCloudflaredTunnel } = await import('./tunnel/cloudflared-tunnel.js')
-    tunnel = await startCloudflaredTunnel(tunnelPort(process.env))
-    process.env.HELPUIT_PUBLIC_URL = normalizePublicUrl(tunnel.url)
-  }
+  // `pnpm start` runs us under a small supervisor (supervisor.ts) that owns the
+  // public tunnel (so its URL stays stable across restarts) and respawns us when the
+  // console's "Restart now" asks for it. We signal that intent by exiting with
+  // RESTART_EXIT_CODE; a plain stop exits 0. HELPUIT_PUBLIC_URL / HELPUIT_BEHIND_TUNNEL
+  // are injected by the supervisor when a tunnel is active.
+  let restartRequested = false
 
   // HELPUIT_CONFIG_PATH lets a container point at a mounted config; defaults to ./helpuit.config.yaml.
   // The DB url is env-only (it's needed before any config can be read). Open it,
@@ -110,7 +105,7 @@ async function main(): Promise<void> {
   // Behind the tunnel, (re)point the Chatwoot webhook at the CURRENT public URL so a
   // connected inbox keeps delivering even though a quick-tunnel URL changes per run.
   // Idempotent + best-effort: an unreachable Chatwoot is reported, never fatal.
-  if (tunnel !== undefined && config.chatwoot.apiToken !== '' && config.runtime.publicUrl !== undefined) {
+  if (process.env.HELPUIT_BEHIND_TUNNEL === '1' && config.chatwoot.apiToken !== '' && config.runtime.publicUrl !== undefined) {
     const synced = await autoSetupChatwoot({
       baseUrl: config.chatwoot.baseUrl,
       token: config.chatwoot.apiToken,
@@ -231,10 +226,13 @@ async function main(): Promise<void> {
       api: buildAdminApi(config, { db: handle.db, configController: supervisor, docs }),
       secureCookie: config.runtime.nodeEnv === 'production',
       activity,
-      // One-click restart (FCW-15): a clean SIGTERM runs the graceful shutdown
-      // below (which exits 0); a process supervisor (Docker restart: unless-stopped
-      // / systemd) brings us back, and boot clears the restart flag.
-      onRestart: () => void process.kill(process.pid, 'SIGTERM'),
+      // One-click restart (FCW-15): run the graceful shutdown below, exiting with
+      // RESTART_EXIT_CODE so the supervisor (local) or a process manager (Docker
+      // restart: unless-stopped / systemd) brings us back; boot clears the flag.
+      onRestart: () => {
+        restartRequested = true
+        void shutdown()
+      },
     },
     readiness: [
       {
@@ -276,7 +274,7 @@ async function main(): Promise<void> {
   console.log('  Helpuit is running')
   console.log(`    Local:  http://localhost:${config.runtime.port}`)
   if (config.runtime.publicUrl !== undefined && config.runtime.publicUrl !== '') {
-    console.log(`    Live:   ${config.runtime.publicUrl}${tunnel !== undefined ? '   (cloudflared tunnel)' : ''}`)
+    console.log(`    Live:   ${config.runtime.publicUrl}${process.env.HELPUIT_BEHIND_TUNNEL === '1' ? '   (cloudflared tunnel)' : ''}`)
   }
   console.log(`    Log in: ${admin.generated ? admin.token : 'use your HELPUIT_ADMIN_TOKEN'}`)
   if (effective.missingSecrets.length > 0) {
@@ -347,11 +345,12 @@ async function main(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     if (retentionTimer !== undefined) clearInterval(retentionTimer)
     clearInterval(alertTimer)
-    await app.close() // stop accepting new webhooks
+    await app.close() // stop accepting new webhooks (forceCloseConnections drops SSE/keep-alives)
     await worker.stop() // drain in-flight investigations
-    if (tunnel !== undefined) await tunnel.stop().catch(() => {}) // tear down the tunnel
     handle.close()
-    process.exit(0)
+    // RESTART_EXIT_CODE asks the supervisor to respawn (apply restart-class changes);
+    // any other stop (SIGINT/SIGTERM) exits 0 so the supervisor tears down for good.
+    process.exit(restartRequested ? RESTART_EXIT_CODE : 0)
   }
   process.on('SIGTERM', () => void shutdown())
   process.on('SIGINT', () => void shutdown())

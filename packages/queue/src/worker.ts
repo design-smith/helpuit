@@ -26,6 +26,8 @@ export class Worker {
   private readonly now: () => number
   private running = false
   private loops: Promise<void>[] = []
+  /** Currently-parked idle polls, so `stop()` can wake them instead of waiting out the interval. */
+  private readonly sleepers = new Set<{ timer: ReturnType<typeof setTimeout>; wake: () => void }>()
 
   constructor(
     private readonly queue: JobQueue,
@@ -70,6 +72,15 @@ export class Worker {
 
   async stop(): Promise<void> {
     this.running = false
+    // Wake every idle poll so the loops re-check `running` and exit NOW. Without this,
+    // a loop parked in an unref'd sleep never resolves once the process is otherwise
+    // idle (e.g. after the HTTP server closed during shutdown) — the event loop drains
+    // and Node exits before stop() completes.
+    for (const sleeper of this.sleepers) {
+      clearTimeout(sleeper.timer)
+      sleeper.wake()
+    }
+    this.sleepers.clear()
     await Promise.all(this.loops)
     this.loops = []
   }
@@ -83,8 +94,18 @@ export class Worker {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms)
-      timer.unref?.()
+      const entry = {
+        wake: () => {
+          this.sleepers.delete(entry)
+          resolve()
+        },
+        timer: setTimeout(() => {
+          this.sleepers.delete(entry)
+          resolve()
+        }, ms),
+      }
+      entry.timer.unref?.() // never keep the process alive just to poll
+      this.sleepers.add(entry)
     })
   }
 }

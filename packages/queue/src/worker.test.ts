@@ -96,4 +96,15 @@ describe('Worker', () => {
 
     expect(processed.sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4])
   })
+
+  it('stop() resolves immediately while loops are idle-polling (does not wait out the interval)', async () => {
+    const queue = new InMemoryJobQueue()
+    // Long poll interval + concurrency 2: both loops are parked in sleep() when we stop.
+    // stop() must wake them so it resolves now, not in 60s (this would otherwise hang the test).
+    const worker = new Worker(queue, { t: async () => {} }, { pollIntervalMs: 60_000, concurrency: 2 })
+    worker.start()
+    await new Promise((r) => setTimeout(r, 20)) // let both loops reach the idle sleep
+    await worker.stop() // must resolve promptly, well under the test timeout
+    expect(true).toBe(true)
+  })
 })

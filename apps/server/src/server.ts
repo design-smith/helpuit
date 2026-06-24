@@ -155,7 +155,14 @@ export interface ServerOptions {
  * if any dependency is unreachable, so an orchestrator can gate traffic.
  */
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
-  const app = Fastify({ logger: options.logger ?? false, bodyLimit: options.bodyLimit ?? 1_048_576 })
+  // forceCloseConnections: on `app.close()` destroy ALL open sockets — including the
+  // long-lived SSE `/admin/stream` and idle keep-alives — so a graceful shutdown (e.g.
+  // the console's "Restart now") actually completes instead of hanging on a held connection.
+  const app = Fastify({
+    logger: options.logger ?? false,
+    bodyLimit: options.bodyLimit ?? 1_048_576,
+    forceCloseConnections: true,
+  })
 
   // Capture the raw JSON body (needed verbatim for GitHub HMAC verification) while still parsing it.
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
