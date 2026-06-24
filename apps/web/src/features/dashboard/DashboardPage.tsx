@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { keys, useActivityStream, useOverview, type ActivityEvent } from '../../lib/api'
 import { Badge, Card, CenteredSpinner, ErrorState, PageHeader, StatCard, Table } from '../../components/ui'
 import { absTime, shortId, timeAgo, tokens, toneFor } from '../../lib/format'
+import { GettingStarted } from '../setup/GettingStarted'
 
 function LiveFeed() {
   const [events, setEvents] = useState<Array<ActivityEvent & { seq: number }>>([])
@@ -72,6 +73,17 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
 }
 
 export function DashboardPage() {
+  return (
+    <div>
+      <PageHeader title="Dashboard" subtitle="Live operational overview · refreshes every 12s" />
+      {/* Onboarding guidance renders independently of the (network-bound) overview below. */}
+      <GettingStarted />
+      <DashboardOverview />
+    </div>
+  )
+}
+
+function DashboardOverview() {
   const { data, isPending, isError, error, refetch } = useOverview()
 
   if (isPending) return <CenteredSpinner />
@@ -80,9 +92,7 @@ export function DashboardPage() {
   const reproPct = Math.round(data.reproduction.successRate * 100)
 
   return (
-    <div>
-      <PageHeader title="Dashboard" subtitle="Live operational overview · refreshes every 12s" />
-
+    <>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Investigations" value={data.investigations.total} />
         <StatCard label="Issues linked" value={data.escalations.issuesLinked} />
@@ -143,6 +153,6 @@ export function DashboardPage() {
           </Table>
         )}
       </div>
-    </div>
+    </>
   )
 }
