@@ -1,6 +1,5 @@
-import { Link } from 'react-router-dom'
 import { CheckCircle2, Circle, CircleDashed } from 'lucide-react'
-import { Card, PageHeader } from '../../components/ui'
+import { Card, LinkButton, PageHeader } from '../../components/ui'
 import type { SetupItem, SetupStatus } from './checklist'
 
 const ICON = { done: CheckCircle2, todo: Circle, optional: CircleDashed }
@@ -49,9 +48,9 @@ export function SetupChecklist({ items }: { items: SetupItem[] }) {
                   )}
                 </div>
                 {item.status !== 'done' && (
-                  <Link to={item.href} className={item.status === 'optional' ? 'btn-ghost shrink-0' : 'btn-primary shrink-0'}>
+                  <LinkButton to={item.href} variant={item.status === 'optional' ? 'ghost' : 'primary'} className="shrink-0">
                     {item.status === 'optional' ? 'Add' : 'Fix'}
-                  </Link>
+                  </LinkButton>
                 )}
               </div>
             </Card>

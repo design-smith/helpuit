@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useInvestigations } from '../../lib/api'
-import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Table } from '../../components/ui'
+import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Row, Select, Table } from '../../components/ui'
 import { absTime, shortId, timeAgo, toneFor } from '../../lib/format'
 
 const STATUSES = ['', 'open', 'escalated', 'resolved', 'resolved_pending_customer_update', 'needs_founder']
@@ -19,13 +19,13 @@ export function InvestigationsListPage() {
         title="Investigations"
         subtitle={data ? `${data.total} total` : undefined}
         actions={
-          <select className="input w-56" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <Select className="w-56" value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s === '' ? 'All statuses' : s}
               </option>
             ))}
-          </select>
+          </Select>
         }
       />
 
@@ -51,7 +51,7 @@ export function InvestigationsListPage() {
             }
           >
             {data.items.map((inv) => (
-              <tr key={inv.id} className="hover:bg-surface-2">
+              <Row key={inv.id}>
                 <td className="td font-mono">
                   <Link className="text-accent hover:underline" to={`/investigations/${inv.id}`}>
                     {shortId(inv.id)}
@@ -71,7 +71,7 @@ export function InvestigationsListPage() {
                 <td className="td text-muted" title={absTime(inv.updatedAt)}>
                   {timeAgo(inv.updatedAt)}
                 </td>
-              </tr>
+              </Row>
             ))}
           </Table>
         </div>

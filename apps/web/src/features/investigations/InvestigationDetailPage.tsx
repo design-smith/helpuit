@@ -1,6 +1,18 @@
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useAudit, useEvidence, useInvestigation, useSpend } from '../../lib/api'
-import { Badge, Card, CenteredSpinner, ErrorState, PageHeader, Spinner } from '../../components/ui'
+import {
+  Badge,
+  Card,
+  CenteredSpinner,
+  CodeBlock,
+  Detail,
+  ErrorState,
+  LinkButton,
+  PageHeader,
+  Spinner,
+  Timeline,
+  TimelineItem,
+} from '../../components/ui'
 import { absTime, shortId, timeAgo, tokens, toneFor } from '../../lib/format'
 
 export function InvestigationDetailPage() {
@@ -20,49 +32,39 @@ export function InvestigationDetailPage() {
       <PageHeader
         title={`Investigation ${shortId(inv.id)}`}
         subtitle={`Conversation #${inv.conversationId}`}
-        actions={
-          <Link className="btn-ghost" to="/investigations">
-            ← All
-          </Link>
-        }
+        actions={<LinkButton to="/investigations">← All</LinkButton>}
       />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
-          <div className="text-xs uppercase tracking-wide text-muted">Status</div>
-          <div className="mt-1">
+          <Detail label="Status">
             <Badge tone={toneFor(inv.status)}>{inv.status}</Badge>
-          </div>
+          </Detail>
         </Card>
         <Card>
-          <div className="text-xs uppercase tracking-wide text-muted">Level</div>
-          <div className="mt-1 text-sm">{inv.level}</div>
+          <Detail label="Level">{inv.level}</Detail>
         </Card>
         <Card>
-          <div className="text-xs uppercase tracking-wide text-muted">Classification</div>
-          <div className="mt-1">
+          <Detail label="Classification">
             {inv.classification ? (
               <Badge tone={toneFor(inv.classification)}>{inv.classification}</Badge>
             ) : (
-              <span className="text-sm text-muted">—</span>
+              <span className="text-muted">—</span>
             )}
-            {inv.confidence !== null && (
-              <span className="ml-2 text-xs text-muted">{Math.round(inv.confidence * 100)}%</span>
-            )}
-          </div>
+            {inv.confidence !== null && <span className="ml-2 text-xs text-muted">{Math.round(inv.confidence * 100)}%</span>}
+          </Detail>
         </Card>
         <Card>
-          <div className="text-xs uppercase tracking-wide text-muted">Created</div>
-          <div className="mt-1 text-sm" title={absTime(inv.createdAt)}>
-            {timeAgo(inv.createdAt)}
-          </div>
+          <Detail label="Created">
+            <span title={absTime(inv.createdAt)}>{timeAgo(inv.createdAt)}</span>
+          </Detail>
         </Card>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {/* Audit timeline */}
         <div className="lg:col-span-2">
-          <h2 className="mb-3 text-sm font-semibold">Audit trail</h2>
+          <h2 className="mb-3 text-sm font-semibold text-ink">Audit trail</h2>
           {audit.isPending ? (
             <Spinner />
           ) : audit.isError ? (
@@ -70,10 +72,9 @@ export function InvestigationDetailPage() {
           ) : audit.data.length === 0 ? (
             <Card className="text-sm text-muted">No audit events.</Card>
           ) : (
-            <ol className="relative space-y-4 border-l border-border pl-5">
+            <Timeline>
               {audit.data.map((e) => (
-                <li key={e.id} className="relative">
-                  <span className="absolute -left-[1.45rem] top-1 h-2.5 w-2.5 rounded-full bg-accent" />
+                <TimelineItem key={e.id}>
                   <div className="flex items-center gap-2">
                     <Badge tone="indigo">{e.type}</Badge>
                     <span className="text-xs text-muted" title={absTime(e.at)}>
@@ -81,20 +82,18 @@ export function InvestigationDetailPage() {
                     </span>
                   </div>
                   {e.data !== null && Object.keys(e.data).length > 0 && (
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-surface-2 p-2 text-xs text-muted">
-                      {JSON.stringify(e.data, null, 2)}
-                    </pre>
+                    <CodeBlock className="mt-1">{JSON.stringify(e.data, null, 2)}</CodeBlock>
                   )}
-                </li>
+                </TimelineItem>
               ))}
-            </ol>
+            </Timeline>
           )}
         </div>
 
         {/* Side: links, spend, evidence */}
         <div className="space-y-6">
           <div>
-            <h2 className="mb-2 text-sm font-semibold">GitHub</h2>
+            <h2 className="mb-2 text-sm font-semibold text-ink">GitHub</h2>
             {detail.data.githubLinks.length === 0 ? (
               <Card className="text-sm text-muted">No linked issues.</Card>
             ) : (
@@ -115,7 +114,7 @@ export function InvestigationDetailPage() {
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-semibold">Spend</h2>
+            <h2 className="mb-2 text-sm font-semibold text-ink">Spend</h2>
             <Card>
               {spend.isPending ? (
                 <Spinner />
@@ -123,7 +122,7 @@ export function InvestigationDetailPage() {
                 <span className="text-sm text-muted">—</span>
               ) : (
                 <>
-                  <div className="text-2xl font-semibold">{tokens(spend.data.total)}</div>
+                  <div className="text-2xl font-semibold text-ink">{tokens(spend.data.total)}</div>
                   <div className="text-xs text-muted">
                     {spend.data.attributed
                       ? `${spend.data.items.length} entries`
@@ -135,7 +134,7 @@ export function InvestigationDetailPage() {
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-semibold">Evidence</h2>
+            <h2 className="mb-2 text-sm font-semibold text-ink">Evidence</h2>
             {evidence.isPending ? (
               <Spinner />
             ) : evidence.isError ? (
@@ -147,9 +146,7 @@ export function InvestigationDetailPage() {
                 {evidence.data.map((a) => (
                   <div key={a.id} className="flex items-center justify-between text-sm">
                     <span>{a.type}</span>
-                    <Badge tone={a.redactionStatus === 'redacted' ? 'emerald' : 'amber'}>
-                      {a.redactionStatus}
-                    </Badge>
+                    <Badge tone={a.redactionStatus === 'redacted' ? 'emerald' : 'amber'}>{a.redactionStatus}</Badge>
                   </div>
                 ))}
                 <p className="pt-1 text-xs text-muted">

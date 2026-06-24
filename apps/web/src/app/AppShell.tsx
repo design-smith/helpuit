@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Search,
@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useLogout, usePaused, useRestartStatus, useRestartNow } from '../lib/api'
+import { Banner, Button, NavButton, NavItem } from '../components/ui'
 
 interface NavItem {
   to: string
@@ -79,55 +80,40 @@ export function AppShell() {
                 {section.heading}
               </div>
               {section.items.map((item) => (
-                <NavLink
+                <NavItem
                   key={item.to}
                   to={item.to}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                      isActive ? 'bg-accent-soft text-indigo-100' : 'text-muted hover:bg-surface-2 hover:text-ink'
-                    }`
-                  }
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                  {item.to === '/conversations' && pausedCount > 0 && (
-                    <span className="ml-auto rounded bg-amber-900/50 px-1.5 text-xs text-amber-300">
-                      {pausedCount}
-                    </span>
-                  )}
-                </NavLink>
+                  icon={item.icon}
+                  label={item.label}
+                  badge={item.to === '/conversations' && pausedCount > 0 ? pausedCount : undefined}
+                />
               ))}
             </div>
           ))}
         </nav>
-        <button
-          className="m-3 flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted hover:bg-surface-2 hover:text-ink"
-          onClick={async () => {
-            await logout.mutateAsync().catch(() => {})
+        <NavButton
+          icon={LogOut}
+          label="Sign out"
+          className="m-3"
+          onClick={() => {
+            void logout.mutateAsync().catch(() => {})
             navigate('/login')
           }}
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </button>
+        />
       </aside>
       <main className="flex-1 overflow-y-auto">
         {restart.data?.pending === true && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-amber-700/40 bg-amber-950/40 px-6 py-2 text-sm text-amber-200">
+          <Banner tone="warn">
             <span>
               Restart required to apply saved changes:{' '}
               <span className="font-mono text-amber-100">
                 {restart.data.reasons.map((r) => r.replace(':', ' ')).join(', ') || 'pending'}
               </span>
             </span>
-            <button
-              className="rounded bg-amber-700/40 px-2 py-0.5 text-amber-100 hover:bg-amber-700/60 disabled:opacity-60"
-              disabled={restartNow.isPending}
-              onClick={() => restartNow.mutate()}
-            >
-              {restartNow.isPending ? 'Restarting…' : 'Restart now'}
-            </button>
-          </div>
+            <Button size="sm" loading={restartNow.isPending} onClick={() => restartNow.mutate()}>
+              Restart now
+            </Button>
+          </Banner>
         )}
         <div className="mx-auto max-w-6xl px-6 py-6">
           <Outlet />

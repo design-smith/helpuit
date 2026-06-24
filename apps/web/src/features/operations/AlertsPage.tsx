@@ -1,5 +1,5 @@
 import { useAlertHistory } from '../../lib/api'
-import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Table } from '../../components/ui'
+import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Row, Table } from '../../components/ui'
 import { absTime, timeAgo } from '../../lib/format'
 
 const KIND_LABEL: Record<string, string> = {
@@ -32,7 +32,7 @@ export function AlertsPage() {
           }
         >
           {data.map((a) => (
-            <tr key={a.id} className="hover:bg-surface-2">
+            <Row key={a.id}>
               <td className="td">
                 <Badge tone={a.severity === 'critical' ? 'red' : 'amber'}>{a.severity}</Badge>
               </td>
@@ -41,7 +41,7 @@ export function AlertsPage() {
               <td className="td text-muted" title={absTime(a.at)}>
                 {timeAgo(a.at)}
               </td>
-            </tr>
+            </Row>
           ))}
         </Table>
       )}

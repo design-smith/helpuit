@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTickets } from '../../lib/api'
-import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Table } from '../../components/ui'
+import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Row, Table } from '../../components/ui'
 import { shortId } from '../../lib/format'
 
 export function TicketsListPage() {
@@ -27,7 +27,7 @@ export function TicketsListPage() {
           }
         >
           {data.items.map((t) => (
-            <tr key={t.id} className="hover:bg-surface-2">
+            <Row key={t.id}>
               <td className="td font-mono text-muted">{shortId(t.id)}</td>
               <td className="td font-mono">
                 <Link className="text-accent hover:underline" to={`/investigations/${t.investigationId}`}>
@@ -42,7 +42,7 @@ export function TicketsListPage() {
                   <span className="text-muted">unlinked</span>
                 )}
               </td>
-            </tr>
+            </Row>
           ))}
         </Table>
       )}

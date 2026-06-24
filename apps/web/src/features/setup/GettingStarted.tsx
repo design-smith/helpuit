@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Circle } from 'lucide-react'
+import { Button, CheckToggle, ListRow, Section } from '../../components/ui'
 import {
   GETTING_STARTED_STEPS,
   GETTING_STARTED_STORAGE_KEY,
@@ -46,14 +46,16 @@ export function GettingStarted() {
   const total = GETTING_STARTED_STEPS.length
 
   return (
-    <section className="card mb-4 p-4 lg:p-5">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-ink">Getting started</h2>
-        <p className="mt-0.5 text-sm text-muted">
-          Watch the quick tour, then connect your tools — {done} of {total} done.
-        </p>
-      </div>
-
+    <Section
+      title="Getting started"
+      hint={`Watch the quick tour, then connect your tools — ${done} of ${total} done.`}
+      className="mb-4"
+      footer={
+        <Button variant="primary" className="ml-auto" onClick={() => persist(dismiss(state))}>
+          I&apos;m all good now
+        </Button>
+      }
+    >
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="aspect-video w-full overflow-hidden rounded-lg border border-border bg-black">
           <iframe
@@ -69,37 +71,21 @@ export function GettingStarted() {
           {GETTING_STARTED_STEPS.map((step) => {
             const checked = state.done[step.id] === true
             return (
-              <li
-                key={step.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5"
-              >
-                <button
-                  type="button"
-                  onClick={() => persist(toggleStep(state, step.id))}
-                  aria-pressed={checked}
-                  className="flex flex-1 items-center gap-3 text-left"
+              <li key={step.id}>
+                <ListRow
+                  actions={
+                    <Link to={step.href} className="text-xs text-accent hover:underline">
+                      Open
+                    </Link>
+                  }
                 >
-                  {checked ? (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-                  ) : (
-                    <Circle className="h-5 w-5 shrink-0 text-muted" />
-                  )}
-                  <span className={`text-sm ${checked ? 'text-muted line-through' : 'text-ink'}`}>{step.title}</span>
-                </button>
-                <Link to={step.href} className="shrink-0 text-xs text-accent hover:underline">
-                  Open
-                </Link>
+                  <CheckToggle checked={checked} onClick={() => persist(toggleStep(state, step.id))} label={step.title} />
+                </ListRow>
               </li>
             )
           })}
         </ul>
       </div>
-
-      <div className="mt-4 flex justify-end border-t border-border pt-4">
-        <button type="button" className="btn-primary" onClick={() => persist(dismiss(state))}>
-          I&apos;m all good now
-        </button>
-      </div>
-    </section>
+    </Section>
   )
 }

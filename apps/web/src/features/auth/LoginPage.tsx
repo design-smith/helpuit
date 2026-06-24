@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLogin } from '../../lib/api'
+import { Button, Field, FormResult, Input } from '../../components/ui'
 
 export function LoginPage() {
   const [token, setToken] = useState('')
@@ -27,23 +28,27 @@ export function LoginPage() {
             H
           </div>
           <div>
-            <div className="font-semibold">Helpuit Console</div>
+            <div className="font-semibold text-ink">Helpuit Console</div>
             <div className="text-xs text-muted">Operator sign-in</div>
           </div>
         </div>
-        <label className="mb-1 block text-xs font-medium text-muted">Admin token</label>
-        <input
-          className="input"
-          type="password"
-          autoFocus
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder="HELPUIT_ADMIN_TOKEN"
-        />
-        {error !== null && <p className="mt-2 text-sm text-red-400">{error}</p>}
-        <button className="btn-primary mt-4 w-full" type="submit" disabled={login.isPending || token === ''}>
-          {login.isPending ? 'Signing in…' : 'Sign in'}
-        </button>
+        <Field label="Admin token">
+          <Input
+            type="password"
+            autoFocus
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="HELPUIT_ADMIN_TOKEN"
+          />
+        </Field>
+        {error !== null && (
+          <FormResult tone="error" className="mt-2">
+            {error}
+          </FormResult>
+        )}
+        <Button variant="primary" type="submit" className="mt-4 w-full" disabled={token === ''} loading={login.isPending}>
+          Sign in
+        </Button>
         <p className="mt-3 text-center text-xs text-muted">
           The token is set as <span className="font-mono">HELPUIT_ADMIN_TOKEN</span> in your env.
         </p>

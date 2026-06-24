@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useJobs, usePurgeJobs, useRetryJob } from '../../lib/api'
-import { Badge, CenteredSpinner, EmptyState, ErrorState, PageHeader, Table } from '../../components/ui'
+import { Badge, Button, CenteredSpinner, EmptyState, ErrorState, PageHeader, Row, Select, Table } from '../../components/ui'
 import { absTime, shortId, timeAgo, toneFor } from '../../lib/format'
 
 const STATUSES = ['', 'pending', 'active', 'done', 'failed']
@@ -18,19 +18,19 @@ export function JobsPage() {
         subtitle={data ? `${data.total} total` : undefined}
         actions={
           <div className="flex items-center gap-2">
-            <select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <Select className="w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s === '' ? 'All statuses' : s}
                 </option>
               ))}
-            </select>
-            <button className="btn-ghost" onClick={() => void purge.mutateAsync('failed')} disabled={purge.isPending}>
+            </Select>
+            <Button onClick={() => void purge.mutateAsync('failed')} loading={purge.isPending}>
               Purge failed
-            </button>
-            <button className="btn-ghost" onClick={() => void purge.mutateAsync('done')} disabled={purge.isPending}>
+            </Button>
+            <Button onClick={() => void purge.mutateAsync('done')} loading={purge.isPending}>
               Purge done
-            </button>
+            </Button>
           </div>
         }
       />
@@ -57,7 +57,7 @@ export function JobsPage() {
             }
           >
             {data.items.map((j) => (
-              <tr key={j.id} className="hover:bg-surface-2">
+              <Row key={j.id}>
                 <td className="td font-mono text-muted">{shortId(j.id)}</td>
                 <td className="td">{j.type}</td>
                 <td className="td">
@@ -72,16 +72,12 @@ export function JobsPage() {
                 </td>
                 <td className="td text-right">
                   {j.status === 'failed' && (
-                    <button
-                      className="btn-ghost"
-                      onClick={() => void retry.mutateAsync(j.id)}
-                      disabled={retry.isPending}
-                    >
+                    <Button size="sm" onClick={() => void retry.mutateAsync(j.id)} loading={retry.isPending}>
                       Retry
-                    </button>
+                    </Button>
                   )}
                 </td>
-              </tr>
+              </Row>
             ))}
           </Table>
         </div>

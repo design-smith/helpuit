@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDeleteSecret, useEffectiveConfig, useSetSecret, type SecretCatalogEntry } from '../../lib/api'
-import { Badge, Card, CenteredSpinner, ErrorState, PageHeader } from '../../components/ui'
+import { Badge, Button, Callout, CenteredSpinner, ErrorState, FormResult, Input, PageHeader, Section } from '../../components/ui'
 import { groupSecrets } from './secret-groups'
 
 function SecretRow({ entry }: { entry: SecretCatalogEntry }) {
@@ -20,36 +20,28 @@ function SecretRow({ entry }: { entry: SecretCatalogEntry }) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border py-3 last:border-0">
       <div className="w-72 shrink-0">
-        <div className="font-mono text-sm">{entry.key}</div>
+        <div className="font-mono text-sm text-ink">{entry.key}</div>
         <div className="mt-0.5 flex gap-1.5">
-          {entry.set ? (
-            <Badge tone="emerald">set · {entry.source}</Badge>
-          ) : (
-            <Badge tone="slate">unset</Badge>
-          )}
+          {entry.set ? <Badge tone="emerald">set · {entry.source}</Badge> : <Badge tone="slate">unset</Badge>}
           {entry.required && !entry.set && <Badge tone="amber">required</Badge>}
         </div>
       </div>
-      <input
-        className="input flex-1"
+      <Input
+        className="flex-1"
         type="password"
         placeholder={entry.set ? 'Replace value…' : 'Enter value…'}
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />
-      <button className="btn-primary" onClick={onSet} disabled={value === '' || set.isPending}>
+      <Button variant="primary" onClick={onSet} disabled={value === ''} loading={set.isPending}>
         {entry.set ? 'Replace' : 'Set'}
-      </button>
+      </Button>
       {entry.set && (
-        <button
-          className="btn-ghost"
-          onClick={() => void del.mutateAsync(entry.key)}
-          disabled={del.isPending}
-        >
+        <Button onClick={() => void del.mutateAsync(entry.key)} loading={del.isPending}>
           Clear
-        </button>
+        </Button>
       )}
-      {saved && <span className="text-sm text-emerald-400">saved ✓</span>}
+      {saved && <FormResult tone="success">saved ✓</FormResult>}
     </div>
   )
 }
@@ -76,43 +68,44 @@ export function SecretsPage() {
       />
 
       {data.restart.pending && (
-        <div className="card mb-4 border-amber-700/50 bg-amber-950/30 p-3 text-sm text-amber-200">
+        <Callout tone="warn" className="mb-4">
           <strong>Restart required</strong> — secret changes are saved (encrypted) and take effect on the next
           restart. Pending: {data.restart.reasons.join(', ')}
-        </div>
+        </Callout>
       )}
 
       {requiredUnset.length > 0 && (
-        <Card className="mb-4 border-amber-700/40">
-          <h2 className="mb-1 font-semibold text-amber-200">Required but unset</h2>
-          <p className="mb-2 text-xs text-muted">
-            These are needed for the matching capability to work. The app still runs without them.
-          </p>
-          {requiredUnset.map((s) => (
-            <SecretRow key={s.key} entry={s} />
-          ))}
-        </Card>
+        <Section
+          title="Required but unset"
+          hint="These are needed for the matching capability to work. The app still runs without them."
+          className="mb-4"
+        >
+          <div>
+            {requiredUnset.map((s) => (
+              <SecretRow key={s.key} entry={s} />
+            ))}
+          </div>
+        </Section>
       )}
 
       {groups.map((group) => (
-        <Card key={group.id} className="mb-4">
-          <h2 className="font-semibold">{group.title}</h2>
-          <p className="mb-2 text-xs text-muted">{group.usedBy}</p>
-          {group.secrets.map((s) => (
-            <SecretRow key={s.key} entry={s} />
-          ))}
-        </Card>
+        <Section key={group.id} title={group.title} hint={group.usedBy} className="mb-4">
+          <div>
+            {group.secrets.map((s) => (
+              <SecretRow key={s.key} entry={s} />
+            ))}
+          </div>
+        </Section>
       ))}
 
       {data.structuralIssues.length > 0 && (
-        <Card className="mt-4">
-          <h2 className="mb-1 font-semibold">Config notes</h2>
+        <Section title="Config notes" className="mt-4">
           <ul className="list-inside list-disc text-sm text-muted">
             {data.structuralIssues.map((i) => (
               <li key={i}>{i}</li>
             ))}
           </ul>
-        </Card>
+        </Section>
       )}
     </div>
   )

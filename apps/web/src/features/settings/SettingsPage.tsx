@@ -1,8 +1,19 @@
 import { useState, type ReactNode } from 'react'
 import { useApplySection, useEffectiveConfig, useTestLlm, type ApplyResult, type LlmTestResult } from '../../lib/api'
-import { Card, CenteredSpinner, ErrorState, PageHeader } from '../../components/ui'
+import {
+  Button,
+  CenteredSpinner,
+  Checkbox,
+  ErrorState,
+  Field,
+  FormResult,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+} from '../../components/ui'
 
-/** A section card with its own draft state + Apply button + result feedback. */
+/** A config section with its own draft state + Apply button + result feedback. */
 function SectionCard({
   title,
   section,
@@ -21,36 +32,25 @@ function SectionCard({
 
   async function onApply() {
     setResult(null)
-    const res = await apply.mutateAsync({ section, value: buildValue() })
-    setResult(res)
+    setResult(await apply.mutateAsync({ section, value: buildValue() }))
   }
 
   return (
-    <Card className="space-y-4">
-      <div>
-        <h2 className="font-semibold">{title}</h2>
-        <p className="text-xs text-muted">{hint}</p>
-      </div>
+    <Section
+      title={title}
+      hint={hint}
+      footer={
+        <>
+          <Button variant="primary" loading={apply.isPending} onClick={onApply}>
+            Apply live
+          </Button>
+          {result?.ok === true && <FormResult tone="success">Applied live ✓</FormResult>}
+          {result?.ok === false && <FormResult tone="error">{result.issues.join('; ') || 'Invalid'}</FormResult>}
+        </>
+      }
+    >
       <div className="space-y-3">{children}</div>
-      <div className="flex items-center gap-3">
-        <button className="btn-primary" onClick={onApply} disabled={apply.isPending}>
-          {apply.isPending ? 'Applying…' : 'Apply live'}
-        </button>
-        {result?.ok === true && <span className="text-sm text-emerald-400">Applied live ✓</span>}
-        {result?.ok === false && (
-          <span className="text-sm text-red-400">{result.issues.join('; ') || 'Invalid'}</span>
-        )}
-      </div>
-    </Card>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex items-center justify-between gap-4">
-      <span className="text-sm text-muted">{label}</span>
-      {children}
-    </label>
+    </Section>
   )
 }
 
@@ -85,23 +85,23 @@ function PolicyCard({ policy }: { policy: any }) {
       hint="Autopublish, resolution notifications, anonymous access, reproduction switch."
       buildValue={() => ({ autopublish, resolutionMode, allowAnonymous, playwrightEnabled })}
     >
-      <Field label="Issue autopublish">
-        <select className="input w-40" value={autopublish} onChange={(e) => setAutopublish(e.target.value)}>
+      <Field label="Issue autopublish" row>
+        <Select className="w-40" value={autopublish} onChange={(e) => setAutopublish(e.target.value)}>
           <option value="draft">draft (approve)</option>
           <option value="auto">auto (file now)</option>
-        </select>
+        </Select>
       </Field>
-      <Field label="Resolution mode">
-        <select className="input w-40" value={resolutionMode} onChange={(e) => setResolutionMode(e.target.value)}>
+      <Field label="Resolution mode" row>
+        <Select className="w-40" value={resolutionMode} onChange={(e) => setResolutionMode(e.target.value)}>
           <option value="manual">manual</option>
           <option value="auto">auto</option>
-        </select>
+        </Select>
       </Field>
-      <Field label="Allow anonymous">
-        <input type="checkbox" checked={allowAnonymous} onChange={(e) => setAllowAnonymous(e.target.checked)} />
+      <Field label="Allow anonymous" row>
+        <Checkbox checked={allowAnonymous} onChange={(e) => setAllowAnonymous(e.target.checked)} />
       </Field>
-      <Field label="Reproduction enabled">
-        <input type="checkbox" checked={playwrightEnabled} onChange={(e) => setPlaywrightEnabled(e.target.checked)} />
+      <Field label="Reproduction enabled" row>
+        <Checkbox checked={playwrightEnabled} onChange={(e) => setPlaywrightEnabled(e.target.checked)} />
       </Field>
     </SectionCard>
   )
@@ -109,13 +109,8 @@ function PolicyCard({ policy }: { policy: any }) {
 
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
   return (
-    <Field label={label}>
-      <input
-        className="input w-40 text-right"
-        type="number"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
+    <Field label={label} row>
+      <Input className="w-40 text-right" type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </Field>
   )
 }
@@ -164,19 +159,17 @@ function TestLlmRow() {
   const [result, setResult] = useState<LlmTestResult | null>(null)
   return (
     <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-      <button
-        type="button"
-        className="btn-ghost"
-        disabled={test.isPending}
+      <Button
+        loading={test.isPending}
         onClick={async () => {
           setResult(null)
           setResult(await test.mutateAsync())
         }}
       >
-        {test.isPending ? 'Testing…' : 'Test LLM'}
-      </button>
-      {result?.ok === true && <span className="text-sm text-emerald-400">{result.detail}</span>}
-      {result?.ok === false && <span className="text-sm text-red-400">{result.detail}</span>}
+        Test LLM
+      </Button>
+      {result?.ok === true && <FormResult tone="success">{result.detail}</FormResult>}
+      {result?.ok === false && <FormResult tone="error">{result.detail}</FormResult>}
       <span className="text-xs text-muted">Makes a real completion call against the saved provider + key.</span>
     </div>
   )
@@ -198,23 +191,23 @@ function ModelsCard({ models }: { models: any }) {
         tiers: { guidance: { model: guidance }, reasoning: { model: reasoning }, vision: { model: vision } },
       })}
     >
-      <Field label="Default provider">
-        <select className="input w-48" value={provider} onChange={(e) => setProvider(e.target.value)}>
+      <Field label="Default provider" row>
+        <Select className="w-48" value={provider} onChange={(e) => setProvider(e.target.value)}>
           {PROVIDERS.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
-      <Field label="Guidance model">
-        <input className="input w-48" value={guidance} onChange={(e) => setGuidance(e.target.value)} />
+      <Field label="Guidance model" row>
+        <Input className="w-48" value={guidance} onChange={(e) => setGuidance(e.target.value)} />
       </Field>
-      <Field label="Reasoning model">
-        <input className="input w-48" value={reasoning} onChange={(e) => setReasoning(e.target.value)} />
+      <Field label="Reasoning model" row>
+        <Input className="w-48" value={reasoning} onChange={(e) => setReasoning(e.target.value)} />
       </Field>
-      <Field label="Vision model">
-        <input className="input w-48" value={vision} onChange={(e) => setVision(e.target.value)} />
+      <Field label="Vision model" row>
+        <Input className="w-48" value={vision} onChange={(e) => setVision(e.target.value)} />
       </Field>
       <TestLlmRow />
     </SectionCard>

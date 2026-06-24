@@ -3,7 +3,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Link } from 'react-router-dom'
 import { useDrafts, usePublishDraft, useRejectDraft, type Draft } from '../../lib/api'
-import { Badge, CenteredSpinner, EmptyState, ErrorState, Modal, PageHeader, Table } from '../../components/ui'
+import { Badge, Button, CenteredSpinner, EmptyState, ErrorState, FormResult, Modal, PageHeader, Row, Table } from '../../components/ui'
 import { shortId, timeAgo } from '../../lib/format'
 
 export function DraftsPage() {
@@ -71,7 +71,7 @@ export function DraftsPage() {
           }
         >
           {data.items.map((d) => (
-            <tr key={d.id} className="hover:bg-surface-2">
+            <Row key={d.id}>
               <td className="td max-w-md truncate">{d.title}</td>
               <td className="td">
                 <Badge tone={d.severity === 'high' ? 'red' : d.severity === 'medium' ? 'amber' : 'slate'}>
@@ -85,11 +85,9 @@ export function DraftsPage() {
               </td>
               <td className="td text-muted">{timeAgo(d.createdAt)}</td>
               <td className="td text-right">
-                <button className="btn-ghost" onClick={() => setActive(d)}>
-                  Review
-                </button>
+                <Button onClick={() => setActive(d)}>Review</Button>
               </td>
-            </tr>
+            </Row>
           ))}
         </Table>
       )}
@@ -100,18 +98,22 @@ export function DraftsPage() {
         onClose={close}
         footer={
           <>
-            {actionError !== null && <span className="mr-auto text-sm text-red-400">{actionError}</span>}
-            <button className="btn-danger" onClick={doReject} disabled={reject.isPending}>
+            {actionError !== null && (
+              <FormResult tone="error" className="mr-auto">
+                {actionError}
+              </FormResult>
+            )}
+            <Button variant="danger" onClick={doReject} loading={reject.isPending}>
               Reject
-            </button>
+            </Button>
             {confirmPublish ? (
-              <button className="btn-primary" onClick={doPublish} disabled={publish.isPending}>
-                {publish.isPending ? 'Filing…' : 'Confirm — file on GitHub'}
-              </button>
+              <Button variant="primary" onClick={doPublish} loading={publish.isPending}>
+                Confirm — file on GitHub
+              </Button>
             ) : (
-              <button className="btn-primary" onClick={() => setConfirmPublish(true)}>
-                Approve & publish
-              </button>
+              <Button variant="primary" onClick={() => setConfirmPublish(true)}>
+                Approve &amp; publish
+              </Button>
             )}
           </>
         }

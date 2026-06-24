@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { usePaused, usePauseConversation, useResumeConversation } from '../../lib/api'
-import { Card, CenteredSpinner, EmptyState, ErrorState, PageHeader } from '../../components/ui'
+import { Button, CenteredSpinner, EmptyState, ErrorState, Field, Input, ListRow, PageHeader, Section } from '../../components/ui'
 import { absTime, timeAgo } from '../../lib/format'
 
 export function ConversationsPage() {
@@ -25,28 +25,19 @@ export function ConversationsPage() {
         subtitle="Paused conversations — the agent stays silent until you resume"
       />
 
-      <Card className="mb-6">
-        <div className="mb-2 text-sm font-semibold">Pause a conversation</div>
+      <Section title="Pause a conversation" className="mb-6">
         <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="mb-1 block text-xs text-muted">Conversation ID</label>
-            <input
-              className="input w-40"
-              value={convId}
-              onChange={(e) => setConvId(e.target.value)}
-              placeholder="e.g. 42"
-              inputMode="numeric"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="mb-1 block text-xs text-muted">Note (optional)</label>
-            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="handling manually" />
-          </div>
-          <button className="btn-primary" onClick={doPause} disabled={convId === '' || pause.isPending}>
+          <Field label="Conversation ID" className="w-40">
+            <Input value={convId} onChange={(e) => setConvId(e.target.value)} placeholder="e.g. 42" inputMode="numeric" />
+          </Field>
+          <Field label="Note (optional)" className="flex-1">
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="handling manually" />
+          </Field>
+          <Button variant="primary" onClick={doPause} disabled={convId === ''} loading={pause.isPending}>
             Pause
-          </button>
+          </Button>
         </div>
-      </Card>
+      </Section>
 
       {paused.isPending ? (
         <CenteredSpinner />
@@ -57,21 +48,19 @@ export function ConversationsPage() {
       ) : (
         <div className="space-y-2">
           {paused.data.map((c) => (
-            <Card key={c.conversationId} className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Conversation #{c.conversationId}</div>
-                <div className="text-xs text-muted" title={absTime(c.updatedAt)}>
-                  {c.note ? `${c.note} · ` : ''}paused {timeAgo(c.updatedAt)}
-                </div>
+            <ListRow
+              key={c.conversationId}
+              actions={
+                <Button onClick={() => void resume.mutateAsync(c.conversationId)} loading={resume.isPending}>
+                  Resume
+                </Button>
+              }
+            >
+              <div className="font-medium text-ink">Conversation #{c.conversationId}</div>
+              <div className="text-xs text-muted" title={absTime(c.updatedAt)}>
+                {c.note ? `${c.note} · ` : ''}paused {timeAgo(c.updatedAt)}
               </div>
-              <button
-                className="btn-ghost"
-                onClick={() => void resume.mutateAsync(c.conversationId)}
-                disabled={resume.isPending}
-              >
-                Resume
-              </button>
-            </Card>
+            </ListRow>
           ))}
         </div>
       )}

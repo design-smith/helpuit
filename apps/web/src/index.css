@@ -30,6 +30,10 @@
   .btn-danger {
     @apply btn border border-red-900/60 bg-red-950/40 text-red-300 hover:bg-red-900/40;
   }
+  /* Compact modifier — defined after .btn so its padding wins (same layer, later rule). */
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
   .input {
     @apply w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none;
   }

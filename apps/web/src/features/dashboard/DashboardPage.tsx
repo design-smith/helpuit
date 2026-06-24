@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { keys, useActivityStream, useOverview, type ActivityEvent } from '../../lib/api'
-import { Badge, Card, CenteredSpinner, ErrorState, PageHeader, StatCard, Table } from '../../components/ui'
+import { Badge, Card, CenteredSpinner, ErrorState, PageHeader, ProgressBar, PulseDot, Row, StatCard, Table } from '../../components/ui'
 import { absTime, shortId, timeAgo, tokens, toneFor } from '../../lib/format'
 import { GettingStarted } from '../setup/GettingStarted'
 
@@ -18,10 +18,7 @@ function LiveFeed() {
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-        </span>
+        <PulseDot />
         <span className="text-xs uppercase tracking-wide text-muted">Live activity</span>
       </div>
       {events.length === 0 ? (
@@ -49,7 +46,7 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
   const entries = Object.entries(data)
   const total = entries.reduce((s, [, n]) => s + n, 0)
   return (
-    <div className="card p-4">
+    <Card>
       <div className="mb-3 text-xs uppercase tracking-wide text-muted">{title}</div>
       {entries.length === 0 ? (
         <p className="text-sm text-muted">No data yet.</p>
@@ -60,15 +57,13 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
               <span className="w-40 shrink-0 text-sm">
                 <Badge tone={toneFor(key)}>{key}</Badge>
               </span>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
-                <div className="h-full rounded-full bg-accent" style={{ width: `${total ? (n / total) * 100 : 0}%` }} />
-              </div>
+              <ProgressBar value={total ? n / total : 0} className="flex-1" />
               <span className="w-8 text-right text-sm tabular-nums text-muted">{n}</span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -132,7 +127,7 @@ function DashboardOverview() {
             }
           >
             {data.investigations.recent.map((inv) => (
-              <tr key={inv.id} className="hover:bg-surface-2">
+              <Row key={inv.id}>
                 <td className="td font-mono">
                   <Link className="text-accent hover:underline" to={`/investigations/${inv.id}`}>
                     {shortId(inv.id)}
@@ -148,7 +143,7 @@ function DashboardOverview() {
                 <td className="td text-muted" title={absTime(inv.createdAt)}>
                   {timeAgo(inv.createdAt)}
                 </td>
-              </tr>
+              </Row>
             ))}
           </Table>
         )}

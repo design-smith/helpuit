@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Github } from 'lucide-react'
 import {
   useApplySection,
@@ -18,18 +18,21 @@ import {
   type IdentityTestResult,
   type QueryRouteScaffoldResult,
 } from '../../lib/api'
-import { Badge, Card, CenteredSpinner, ErrorState, PageHeader } from '../../components/ui'
+import {
+  Badge,
+  Button,
+  CenteredSpinner,
+  CodeBlock,
+  ErrorState,
+  Field,
+  FormResult,
+  Input,
+  PageHeader,
+  Section,
+  Select,
+} from '../../components/ui'
 import { supabaseJwksUrl } from './identity-preset'
 import { parseColumnList } from './scaffold-form'
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex items-center justify-between gap-4">
-      <span className="text-sm text-muted">{label}</span>
-      {children}
-    </label>
-  )
-}
 
 function useSectionForm(section: string) {
   const apply = useApplySection()
@@ -63,11 +66,11 @@ export function ConnectionsPage() {
 function SaveRow({ result, pending, onSave }: { result: ApplyResult | null; pending: boolean; onSave: () => void }) {
   return (
     <div className="flex items-center gap-3">
-      <button className="btn-primary" onClick={onSave} disabled={pending}>
-        {pending ? 'Saving…' : 'Save (restart to apply)'}
-      </button>
-      {result?.ok === true && <span className="text-sm text-amber-300">Saved — restart to apply</span>}
-      {result?.ok === false && <span className="text-sm text-red-400">{result.issues.join('; ') || 'Invalid'}</span>}
+      <Button variant="primary" loading={pending} onClick={onSave}>
+        Save (restart to apply)
+      </Button>
+      {result?.ok === true && <FormResult tone="warn">Saved — restart to apply</FormResult>}
+      {result?.ok === false && <FormResult tone="error">{result.issues.join('; ') || 'Invalid'}</FormResult>}
     </div>
   )
 }
@@ -83,27 +86,23 @@ function GithubCard({ github }: { github: any }) {
   const [testResult, setTestResult] = useState<GitHubTestResult | null>(null)
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Github className="h-4 w-4" />
-        <h2 className="font-semibold">GitHub</h2>
-        {connected ? <Badge tone="emerald">App connected</Badge> : <Badge tone="slate">token mode</Badge>}
-      </div>
-
+    <Section
+      icon={<Github className="h-4 w-4" />}
+      title="GitHub"
+      actions={connected ? <Badge tone="emerald">App connected</Badge> : <Badge tone="slate">token mode</Badge>}
+    >
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          className="btn-ghost"
-          disabled={test.isPending}
+        <Button
+          loading={test.isPending}
           onClick={async () => {
             setTestResult(null)
             setTestResult(await test.mutateAsync())
           }}
         >
-          {test.isPending ? 'Testing…' : 'Test connection'}
-        </button>
-        {testResult?.ok === true && <span className="text-sm text-emerald-400">{testResult.detail}</span>}
-        {testResult?.ok === false && <span className="text-sm text-red-400">{testResult.detail}</span>}
+          Test connection
+        </Button>
+        {testResult?.ok === true && <FormResult tone="success">{testResult.detail}</FormResult>}
+        {testResult?.ok === false && <FormResult tone="error">{testResult.detail}</FormResult>}
       </div>
 
       {connected ? (
@@ -115,32 +114,35 @@ function GithubCard({ github }: { github: any }) {
             )}
           </div>
           <div className="text-muted">
-            Repo: <span className="font-mono">{github.owner}/{github.repo}</span>
+            Repo:{' '}
+            <span className="font-mono">
+              {github.owner}/{github.repo}
+            </span>
           </div>
-          <button className="btn-ghost mt-2" onClick={() => connect.mutate()} disabled={connect.isPending}>
+          <Button className="mt-2" onClick={() => connect.mutate()} loading={connect.isPending}>
             Reconnect / change repo
-          </button>
+          </Button>
         </div>
       ) : (
         <>
           <p className="text-sm text-muted">
             Recommended: connect a GitHub App — scoped to the repo you pick, short-lived tokens, webhook auto-wired.
           </p>
-          <button className="btn-primary" onClick={() => connect.mutate()} disabled={connect.isPending}>
+          <Button variant="primary" onClick={() => connect.mutate()} loading={connect.isPending}>
             <Github className="h-4 w-4" /> Connect with GitHub
-          </button>
+          </Button>
 
           <div className="border-t border-border pt-3">
             <p className="mb-2 text-xs uppercase tracking-wide text-muted">Or set the repo manually (token mode)</p>
             <div className="space-y-3">
-              <Field label="Owner">
-                <input className="input w-56" value={owner} onChange={(e) => setOwner(e.target.value)} />
+              <Field label="Owner" row>
+                <Input className="w-56" value={owner} onChange={(e) => setOwner(e.target.value)} />
               </Field>
-              <Field label="Repo">
-                <input className="input w-56" value={repo} onChange={(e) => setRepo(e.target.value)} />
+              <Field label="Repo" row>
+                <Input className="w-56" value={repo} onChange={(e) => setRepo(e.target.value)} />
               </Field>
-              <Field label="Production branch">
-                <input className="input w-56" value={branch} onChange={(e) => setBranch(e.target.value)} />
+              <Field label="Production branch" row>
+                <Input className="w-56" value={branch} onChange={(e) => setBranch(e.target.value)} />
               </Field>
               <p className="text-xs text-muted">Set the GITHUB_TOKEN under Secrets for token mode.</p>
               <SaveRow
@@ -152,7 +154,7 @@ function GithubCard({ github }: { github: any }) {
           </div>
         </>
       )}
-    </Card>
+    </Section>
   )
 }
 
@@ -181,16 +183,17 @@ function ChatwootCard({ chatwoot }: { chatwoot: any }) {
   }
 
   return (
-    <Card className="space-y-4">
-      <h2 className="font-semibold">Chatwoot</h2>
-      <p className="text-sm text-muted">Your Chatwoot instance + the inbox Helpuit serves. Validate your token to prefill account &amp; inbox.</p>
+    <Section
+      title="Chatwoot"
+      hint="Your Chatwoot instance + the inbox Helpuit serves. Validate your token to prefill account & inbox."
+    >
       <div className="space-y-3">
-        <Field label="Base URL">
-          <input className="input w-56" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        <Field label="Base URL" row>
+          <Input className="w-56" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
         </Field>
-        <Field label="API access token">
-          <input
-            className="input w-56"
+        <Field label="API access token" row>
+          <Input
+            className="w-56"
             type="password"
             placeholder="validate to prefill"
             value={token}
@@ -201,35 +204,32 @@ function ChatwootCard({ chatwoot }: { chatwoot: any }) {
           />
         </Field>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="btn-ghost" onClick={onValidate} disabled={validate.isPending || token === ''}>
-            {validate.isPending ? 'Validating…' : 'Validate & prefill'}
-          </button>
-          {validation?.ok === true && <span className="text-sm text-emerald-400">{validation.detail}</span>}
-          {validation?.ok === false && <span className="text-sm text-red-400">{validation.detail}</span>}
+          <Button onClick={onValidate} disabled={token === ''} loading={validate.isPending}>
+            Validate &amp; prefill
+          </Button>
+          {validation?.ok === true && <FormResult tone="success">{validation.detail}</FormResult>}
+          {validation?.ok === false && <FormResult tone="error">{validation.detail}</FormResult>}
         </div>
-        <Field label="Account ID">
-          <input className="input w-24 text-right" type="number" value={accountId} onChange={(e) => setAccountId(Number(e.target.value))} />
+        <Field label="Account ID" row>
+          <Input className="w-24 text-right" type="number" value={accountId} onChange={(e) => setAccountId(Number(e.target.value))} />
         </Field>
-        <Field label="Inbox ID">
-          <input className="input w-24 text-right" type="number" value={inboxId} onChange={(e) => setInboxId(Number(e.target.value))} />
+        <Field label="Inbox ID" row>
+          <Input className="w-24 text-right" type="number" value={inboxId} onChange={(e) => setInboxId(Number(e.target.value))} />
         </Field>
-        <p className="text-xs text-muted">Save the token under Secrets (CHATWOOT_API_TOKEN); Save below applies the URL, account &amp; inbox on restart.</p>
+        <p className="text-xs text-muted">
+          Save the token under Secrets (CHATWOOT_API_TOKEN); Save below applies the URL, account &amp; inbox on restart.
+        </p>
         <SaveRow result={result} pending={pending} onSave={() => save({ baseUrl, accountId, inboxId })} />
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={onAutoSetup}
-            disabled={setup.isPending || token === '' || baseUrl === ''}
-          >
-            {setup.isPending ? 'Setting up…' : 'Auto-setup bot + webhook'}
-          </button>
-          {setupResult?.ok === true && <span className="text-sm text-emerald-400">{setupResult.detail}</span>}
-          {setupResult?.ok === false && <span className="text-sm text-red-400">{setupResult.detail}</span>}
+          <Button onClick={onAutoSetup} disabled={token === '' || baseUrl === ''} loading={setup.isPending}>
+            Auto-setup bot + webhook
+          </Button>
+          {setupResult?.ok === true && <FormResult tone="success">{setupResult.detail}</FormResult>}
+          {setupResult?.ok === false && <FormResult tone="error">{setupResult.detail}</FormResult>}
           <span className="text-xs text-muted">Creates the Agent Bot + webhook in Chatwoot (idempotent). Needs HELPUIT_PUBLIC_URL.</span>
         </div>
       </div>
-    </Card>
+    </Section>
   )
 }
 
@@ -249,49 +249,43 @@ function IdentityCard({ identity }: { identity: any }) {
   const secretKey = mode === 'hmac' ? 'IDENTITY_HMAC_SECRET' : mode === 'endpoint' ? 'IDENTITY_VERIFY_TOKEN' : null
 
   return (
-    <Card className="space-y-4">
-      <h2 className="font-semibold">Identity</h2>
-      <p className="text-sm text-muted">
-        How Helpuit verifies who a customer is before reading their account. Applies on the next restart.
-      </p>
+    <Section
+      title="Identity"
+      hint="How Helpuit verifies who a customer is before reading their account. Applies on the next restart."
+    >
       <div className="space-y-3">
-        <Field label="Mode">
-          <select className="input w-48" value={mode} onChange={(e) => setMode(e.target.value)}>
+        <Field label="Mode" row>
+          <Select className="w-48" value={mode} onChange={(e) => setMode(e.target.value)}>
             <option value="hmac">hmac (shared secret)</option>
             <option value="jwt">jwt (JWKS)</option>
             <option value="endpoint">endpoint (verify URL)</option>
-          </select>
+          </Select>
         </Field>
-        <Field label="User-id claim">
-          <input className="input w-48" value={useridClaim} onChange={(e) => setUseridClaim(e.target.value)} />
+        <Field label="User-id claim" row>
+          <Input className="w-48" value={useridClaim} onChange={(e) => setUseridClaim(e.target.value)} />
         </Field>
         {mode === 'jwt' && (
           <>
-            <Field label="JWKS URL">
-              <input className="input w-56" value={jwksUrl} onChange={(e) => setJwksUrl(e.target.value)} />
+            <Field label="JWKS URL" row>
+              <Input className="w-56" value={jwksUrl} onChange={(e) => setJwksUrl(e.target.value)} />
             </Field>
             <div className="flex flex-wrap items-center gap-2">
-              <input
-                className="input w-40"
+              <Input
+                className="w-40"
                 placeholder="Supabase project ref"
                 value={supabaseRef}
                 onChange={(e) => setSupabaseRef(e.target.value)}
               />
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={supabaseRef.trim() === ''}
-                onClick={() => setJwksUrl(supabaseJwksUrl(supabaseRef))}
-              >
+              <Button disabled={supabaseRef.trim() === ''} onClick={() => setJwksUrl(supabaseJwksUrl(supabaseRef))}>
                 Use Supabase preset
-              </button>
+              </Button>
               <span className="text-xs text-muted">Fills the JWKS URL from your Supabase project ref.</span>
             </div>
           </>
         )}
         {mode === 'endpoint' && (
-          <Field label="Verify URL">
-            <input className="input w-56" value={verifyUrl} onChange={(e) => setVerifyUrl(e.target.value)} />
+          <Field label="Verify URL" row>
+            <Input className="w-56" value={verifyUrl} onChange={(e) => setVerifyUrl(e.target.value)} />
           </Field>
         )}
         <SaveRow
@@ -312,8 +306,8 @@ function IdentityCard({ identity }: { identity: any }) {
               {mode === 'hmac' ? 'Shared secret' : 'Verify token'} · {secretKey}
             </p>
             <div className="flex items-center gap-3">
-              <input
-                className="input w-56"
+              <Input
+                className="w-56"
                 type="password"
                 placeholder="enter to set / rotate"
                 value={secretValue}
@@ -322,39 +316,37 @@ function IdentityCard({ identity }: { identity: any }) {
                   setSecretSaved(false)
                 }}
               />
-              <button
-                className="btn-ghost"
-                disabled={secretMut.isPending || secretValue === ''}
+              <Button
+                disabled={secretValue === ''}
+                loading={secretMut.isPending}
                 onClick={async () => {
                   await secretMut.mutateAsync({ key: secretKey, value: secretValue })
                   setSecretValue('')
                   setSecretSaved(true)
                 }}
               >
-                {secretMut.isPending ? 'Saving…' : 'Set secret'}
-              </button>
-              {secretSaved && <span className="text-sm text-amber-300">Saved — restart to apply</span>}
+                Set secret
+              </Button>
+              {secretSaved && <FormResult tone="warn">Saved — restart to apply</FormResult>}
             </div>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={test.isPending}
+          <Button
+            loading={test.isPending}
             onClick={async () => {
               setTestResult(null)
               setTestResult(await test.mutateAsync())
             }}
           >
-            {test.isPending ? 'Testing…' : 'Test identity'}
-          </button>
-          {testResult?.ok === true && <span className="text-sm text-emerald-400">{testResult.detail}</span>}
-          {testResult?.ok === false && <span className="text-sm text-red-400">{testResult.detail}</span>}
+            Test identity
+          </Button>
+          {testResult?.ok === true && <FormResult tone="success">{testResult.detail}</FormResult>}
+          {testResult?.ok === false && <FormResult tone="error">{testResult.detail}</FormResult>}
           <span className="text-xs text-muted">Checks the saved identity config (verify a sample / reach JWKS / ping endpoint).</span>
         </div>
       </div>
-    </Card>
+    </Section>
   )
 }
 
@@ -369,42 +361,45 @@ function ChatwootTokenCard() {
   const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null)
 
   return (
-    <Card className="space-y-4">
-      <h2 className="font-semibold">Customer token hand-off</h2>
-      <p className="text-sm text-muted">
-        L2 account investigation needs the customer's <em>verified</em> token on the conversation. From your
-        verified-auth backend, set it here (uses the configured Chatwoot creds).
-      </p>
+    <Section
+      title="Customer token hand-off"
+      hint={
+        <>
+          L2 account investigation needs the customer's <em>verified</em> token on the conversation. From your
+          verified-auth backend, set it here (uses the configured Chatwoot creds).
+        </>
+      }
+    >
       <div className="space-y-3">
-        <Field label="Conversation ID">
-          <input
-            className="input w-32 text-right"
+        <Field label="Conversation ID" row>
+          <Input
+            className="w-32 text-right"
             type="number"
             value={conversationId}
             onChange={(e) => setConversationId(e.target.value)}
           />
         </Field>
-        <Field label="Verified token">
-          <input className="input w-56" type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} />
+        <Field label="Verified token" row>
+          <Input className="w-56" type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} />
         </Field>
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={setToken.isPending || authToken === '' || !Number.isInteger(Number(conversationId))}
+          <Button
+            variant="primary"
+            disabled={authToken === '' || !Number.isInteger(Number(conversationId))}
+            loading={setToken.isPending}
             onClick={async () => setResult(await setToken.mutateAsync({ conversationId: Number(conversationId), authToken }))}
           >
-            {setToken.isPending ? 'Setting…' : 'Set token'}
-          </button>
-          {result?.ok === true && <span className="text-sm text-emerald-400">{result.detail}</span>}
-          {result?.ok === false && <span className="text-sm text-red-400">{result.detail}</span>}
+            Set token
+          </Button>
+          {result?.ok === true && <FormResult tone="success">{result.detail}</FormResult>}
+          {result?.ok === false && <FormResult tone="error">{result.detail}</FormResult>}
         </div>
         <div className="border-t border-border pt-3">
           <p className="mb-1 text-xs uppercase tracking-wide text-muted">Or set it from the browser widget</p>
-          <pre className="overflow-x-auto rounded bg-surface-2 p-3 text-xs">{WIDGET_SNIPPET}</pre>
+          <CodeBlock>{WIDGET_SNIPPET}</CodeBlock>
         </div>
       </div>
-    </Card>
+    </Section>
   )
 }
 
@@ -418,43 +413,41 @@ function AccountDataCard() {
   const allowed = parseColumnList(columns)
 
   return (
-    <Card className="space-y-4">
-      <h2 className="font-semibold">Account data (L2)</h2>
-      <p className="text-sm text-muted">
-        Generate a read-only Supabase Edge Function (+ the config to paste) so the agent can investigate a
-        verified customer's account — column-allowlisted, never raw SQL.
-      </p>
+    <Section
+      title="Account data (L2)"
+      hint="Generate a read-only Supabase Edge Function (+ the config to paste) so the agent can investigate a verified customer's account — column-allowlisted, never raw SQL."
+    >
       <div className="space-y-3">
-        <Field label="Table">
-          <input className="input w-48" value={table} onChange={(e) => setTable(e.target.value)} />
+        <Field label="Table" row>
+          <Input className="w-48" value={table} onChange={(e) => setTable(e.target.value)} />
         </Field>
-        <Field label="User-id column">
-          <input className="input w-48" value={userColumn} onChange={(e) => setUserColumn(e.target.value)} />
+        <Field label="User-id column" row>
+          <Input className="w-48" value={userColumn} onChange={(e) => setUserColumn(e.target.value)} />
         </Field>
-        <Field label="Allowed columns">
-          <input className="input w-56" value={columns} onChange={(e) => setColumns(e.target.value)} />
+        <Field label="Allowed columns" row>
+          <Input className="w-56" value={columns} onChange={(e) => setColumns(e.target.value)} />
         </Field>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={scaffold.isPending || table.trim() === '' || userColumn.trim() === '' || allowed.length === 0}
+        <Button
+          variant="primary"
+          disabled={table.trim() === '' || userColumn.trim() === '' || allowed.length === 0}
+          loading={scaffold.isPending}
           onClick={async () => setResult(await scaffold.mutateAsync({ table, userColumn, allowedColumns: allowed }))}
         >
-          {scaffold.isPending ? 'Generating…' : 'Generate scaffold'}
-        </button>
+          Generate scaffold
+        </Button>
         {result !== null && (
           <div className="space-y-3 border-t border-border pt-3">
             <div>
               <p className="mb-1 text-xs uppercase tracking-wide text-muted">supabase/functions/{result.functionName}/index.ts</p>
-              <pre className="max-h-72 overflow-auto rounded bg-surface-2 p-3 text-xs">{result.functionTs}</pre>
+              <CodeBlock scroll>{result.functionTs}</CodeBlock>
             </div>
             <div>
               <p className="mb-1 text-xs uppercase tracking-wide text-muted">helpuit.config.yaml</p>
-              <pre className="overflow-x-auto rounded bg-surface-2 p-3 text-xs">{result.configYaml}</pre>
+              <CodeBlock>{result.configYaml}</CodeBlock>
             </div>
           </div>
         )}
       </div>
-    </Card>
+    </Section>
   )
 }
