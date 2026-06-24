@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Neobrutalism design tokens (light · blue), copied from ekmas/neobrutalism-components. */
+:root {
+  --border-radius: 5px;
+  --box-shadow-x: 4px;
+  --box-shadow-y: 4px;
+  --reverse-box-shadow-x: -4px;
+  --reverse-box-shadow-y: -4px;
+  --heading-font-weight: 700;
+  --base-font-weight: 500;
+
+  --background: oklch(93.46% 0.0304 254.32);
+  --secondary-background: oklch(100% 0 0);
+  --foreground: oklch(0% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: oklch(67.47% 0.1725 259.61);
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+  --overlay: oklch(0% 0 0 / 0.8);
+  --shadow: var(--box-shadow-x) var(--box-shadow-y) 0px 0px var(--border);
+
+  --chart-1: oklch(67.47% 0.1726 259.49);
+  --chart-2: oklch(67.28% 0.2147 24.22);
+  --chart-3: oklch(86.03% 0.176 92.36);
+  --chart-4: oklch(79.76% 0.2044 153.08);
+  --chart-5: oklch(66.34% 0.1806 277.2);
+}
+
 @layer base {
   html,
   body,
@@ -9,36 +36,45 @@
     height: 100%;
   }
   body {
-    @apply bg-canvas text-ink antialiased;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    @apply bg-background text-foreground font-base antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
   }
 }
 
 @layer components {
+  /* Neobrutalism: thick black border + hard offset shadow + small radius. */
   .card {
-    @apply rounded-xl border border-border bg-surface;
+    @apply rounded-base border-2 border-border bg-secondary-background shadow-shadow;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-base border-2 border-border px-4 py-2 text-sm font-base transition-all disabled:opacity-50 disabled:cursor-not-allowed;
   }
+  /* The signature press: on hover the element slides into its shadow, which drops. */
   .btn-primary {
-    @apply btn bg-accent text-white hover:bg-indigo-500;
+    @apply btn bg-main text-main-foreground shadow-shadow hover:translate-x-boxShadowX hover:translate-y-boxShadowY hover:shadow-none;
   }
   .btn-ghost {
-    @apply btn border border-border bg-surface-2 text-ink hover:bg-border;
+    @apply btn bg-secondary-background text-foreground shadow-shadow hover:translate-x-boxShadowX hover:translate-y-boxShadowY hover:shadow-none;
   }
   .btn-danger {
-    @apply btn border border-red-900/60 bg-red-950/40 text-red-300 hover:bg-red-900/40;
+    @apply btn bg-red-400 text-foreground shadow-shadow hover:translate-x-boxShadowX hover:translate-y-boxShadowY hover:shadow-none;
   }
   /* Compact modifier — defined after .btn so its padding wins (same layer, later rule). */
   .btn-sm {
     @apply px-2 py-1 text-xs;
   }
   .input {
-    @apply w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none;
+    @apply w-full rounded-base border-2 border-border bg-secondary-background px-3 py-2 text-sm font-base text-foreground ring-offset-white placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2;
   }
   .th {
-    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+    @apply px-3 py-2 text-left text-xs font-heading uppercase tracking-wide text-foreground;
   }
   .td {
     @apply px-3 py-2 text-sm;

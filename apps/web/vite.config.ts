@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -10,6 +11,7 @@ const proxied = ['/admin', '/healthz', '/readyz', '/metrics', '/webhooks']
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: { outDir: 'dist', emptyOutDir: true },
   server: {
     port: 5173,

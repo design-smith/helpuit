@@ -10,11 +10,14 @@ import { Link, NavLink } from 'react-router-dom'
 import { Loader2, AlertTriangle, CheckCircle2, Circle, Inbox, type LucideIcon } from 'lucide-react'
 
 /**
- * THE design system. Every page composes from these primitives — no page defines
- * its own buttons, inputs, cards, badges, banners, or status colors. Visual tokens
- * (canvas/surface/ink/muted/border/accent + the status hues) live in
- * `tailwind.config.js`; the `.btn*`/`.input`/`.card`/`.th`/`.td` base classes live
- * in `index.css`. This file is the single React surface over both.
+ * THE design system — neobrutalism (thick black borders, hard offset shadows, bold
+ * flat fills, chunky type, press-to-translate hover). Every page composes from these
+ * primitives; no page defines its own controls or status colors. Visual tokens live
+ * in `tailwind.config.js` (`main`/`background`/`secondary-background`/`foreground`/
+ * `border` + `boxShadowX/Y` + `radius-base` + `font-base/heading`) and `index.css`
+ * (CSS vars + the `.btn*`/`.input`/`.card`/`.th`/`.td` base classes). The full
+ * vendored neobrutalism library lives beside this file in `components/ui/*` for
+ * direct use; this barrel is the console's reskinned, stable surface over it.
  */
 
 /** Join class fragments, dropping falsy ones. */
@@ -23,35 +26,35 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tokens — status → tone, the only place colors are chosen.
+// Tokens — status → tone. Bold flat fills + black text (the border is in the base).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Badge tones (full strings so Tailwind doesn't purge them). */
+/** Badge tones — bold flat fill + black text; the `border-2 border-border` is in the base. */
 const BADGE_TONES: Record<string, string> = {
-  slate: 'bg-slate-700/40 text-slate-300 border-slate-600/40',
-  sky: 'bg-sky-900/40 text-sky-300 border-sky-700/40',
-  amber: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
-  emerald: 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40',
-  red: 'bg-red-950/50 text-red-300 border-red-800/50',
-  indigo: 'bg-accent-soft text-indigo-200 border-indigo-700/50',
+  slate: 'bg-secondary-background text-foreground',
+  sky: 'bg-sky-300 text-foreground',
+  amber: 'bg-amber-300 text-foreground',
+  emerald: 'bg-emerald-300 text-foreground',
+  red: 'bg-red-400 text-foreground',
+  indigo: 'bg-main text-main-foreground',
 }
 
 /** Inline message tone → text color (success/error/warn feedback under forms). */
 export type MessageTone = 'success' | 'error' | 'warn' | 'muted'
 const MESSAGE_TONES: Record<MessageTone, string> = {
-  success: 'text-emerald-400',
-  error: 'text-red-400',
-  warn: 'text-amber-300',
+  success: 'text-green-700',
+  error: 'text-red-700',
+  warn: 'text-amber-700',
   muted: 'text-muted',
 }
 
-/** Callout/banner tone → border+bg+text. */
+/** Callout/banner tone → bold fill (the `border-2 border-border` is in the base). */
 export type CalloutTone = 'info' | 'warn' | 'error' | 'success'
 const CALLOUT_TONES: Record<CalloutTone, string> = {
-  info: 'border-border bg-surface-2 text-muted',
-  warn: 'border-amber-700/50 bg-amber-950/30 text-amber-200',
-  error: 'border-red-800/50 bg-red-950/40 text-red-200',
-  success: 'border-emerald-700/50 bg-emerald-950/30 text-emerald-200',
+  info: 'bg-secondary-background text-foreground',
+  warn: 'bg-amber-300 text-foreground',
+  error: 'bg-red-400 text-foreground',
+  success: 'bg-emerald-300 text-foreground',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,7 +87,7 @@ export function Section({
     <Card className={cx('space-y-4', className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="flex items-center gap-2 font-semibold text-ink">
+          <h2 className="flex items-center gap-2 font-heading text-foreground">
             {icon}
             {title}
           </h2>
@@ -93,7 +96,7 @@ export function Section({
         {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
       {children}
-      {footer !== undefined && <div className="flex items-center gap-3 border-t border-border pt-3">{footer}</div>}
+      {footer !== undefined && <div className="flex items-center gap-3 border-t-2 border-border pt-3">{footer}</div>}
     </Card>
   )
 }
@@ -102,7 +105,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="mb-5 flex items-start justify-between gap-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">{title}</h1>
+        <h1 className="text-xl font-heading text-foreground">{title}</h1>
         {subtitle !== undefined && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions !== undefined && <div className="flex items-center gap-2">{actions}</div>}
@@ -186,8 +189,8 @@ export function Checkbox({
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label?: ReactNode }) {
   return (
-    <label className={cx('flex items-center gap-2 text-sm text-ink', className)}>
-      <input type="checkbox" className="h-4 w-4 rounded border-border bg-surface-2 accent-accent" {...props} />
+    <label className={cx('flex items-center gap-2 text-sm text-foreground', className)}>
+      <input type="checkbox" className="h-5 w-5 rounded-base border-2 border-border accent-main" {...props} />
       {label !== undefined && label}
     </label>
   )
@@ -198,11 +201,11 @@ export function CheckToggle({ checked, onClick, label }: { checked: boolean; onC
   return (
     <button type="button" onClick={onClick} aria-pressed={checked} className="flex items-center gap-3 text-left">
       {checked ? (
-        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-green-700" />
       ) : (
         <Circle className="h-5 w-5 shrink-0 text-muted" />
       )}
-      <span className={cx('text-sm', checked ? 'text-muted line-through' : 'text-ink')}>{label}</span>
+      <span className={cx('text-sm', checked ? 'text-muted line-through' : 'text-foreground')}>{label}</span>
     </button>
   )
 }
@@ -233,7 +236,7 @@ export function Field({
   }
   return (
     <div className={cx('space-y-1', className)}>
-      <label htmlFor={htmlFor} className="block text-xs font-medium text-muted">
+      <label htmlFor={htmlFor} className="block text-xs font-heading text-muted">
         {label}
       </label>
       {children}
@@ -245,7 +248,7 @@ export function Field({
 /** Inline success/error/warn message under a form action. Renders nothing when empty. */
 export function FormResult({ tone = 'muted', className = '', children }: { tone?: MessageTone; className?: string; children?: ReactNode }) {
   if (children === undefined || children === null || children === false || children === '') return null
-  return <p className={cx('text-sm', MESSAGE_TONES[tone], className)}>{children}</p>
+  return <p className={cx('text-sm font-base', MESSAGE_TONES[tone], className)}>{children}</p>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -256,7 +259,7 @@ export function Badge({ tone = 'slate', children }: { tone?: string; children: R
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center rounded-base border-2 border-border px-2 py-0.5 text-xs font-base',
         BADGE_TONES[tone] ?? BADGE_TONES.slate,
       )}
     >
@@ -275,13 +278,13 @@ export function Callout({
   className?: string
   children: ReactNode
 }) {
-  return <div className={cx('rounded-lg border p-3 text-sm', CALLOUT_TONES[tone], className)}>{children}</div>
+  return <div className={cx('rounded-base border-2 border-border p-3 text-sm font-base', CALLOUT_TONES[tone], className)}>{children}</div>
 }
 
 /** A flush, full-width tone bar (e.g. the top-of-page "restart required" notice). */
 export function Banner({ tone = 'warn', className = '', children }: { tone?: CalloutTone; className?: string; children: ReactNode }) {
   return (
-    <div className={cx('flex flex-wrap items-center gap-x-4 gap-y-1 border-b px-6 py-2 text-sm', CALLOUT_TONES[tone], className)}>
+    <div className={cx('flex flex-wrap items-center gap-x-4 gap-y-1 border-b-2 border-border px-6 py-2 text-sm font-base', CALLOUT_TONES[tone], className)}>
       {children}
     </div>
   )
@@ -291,7 +294,7 @@ export function StatCard({ label, value, hint }: { label: string; value: ReactNo
   return (
     <div className="card p-4">
       <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-1 text-2xl font-heading text-foreground">{value}</div>
       {hint !== undefined && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </div>
   )
@@ -318,11 +321,9 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   const message = error instanceof Error ? error.message : 'Something went wrong'
   return (
     <div className="card flex flex-col items-center gap-3 p-8 text-center">
-      <AlertTriangle className="h-6 w-6 text-red-400" />
+      <AlertTriangle className="h-6 w-6 text-red-600" />
       <p className="text-sm text-muted">{message}</p>
-      {onRetry !== undefined && (
-        <Button onClick={onRetry}>Retry</Button>
-      )}
+      {onRetry !== undefined && <Button onClick={onRetry}>Retry</Button>}
     </div>
   )
 }
@@ -331,7 +332,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="card flex flex-col items-center gap-2 p-10 text-center">
       <Inbox className="h-6 w-6 text-muted" />
-      <p className="text-sm font-medium text-ink">{title}</p>
+      <p className="text-sm font-heading text-foreground">{title}</p>
       {hint !== undefined && <p className="text-xs text-muted">{hint}</p>}
     </div>
   )
@@ -340,9 +341,9 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 /** The pulsing "live" dot used by real-time feeds. */
 export function PulseDot() {
   return (
-    <span className="relative flex h-2 w-2">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+    <span className="relative flex h-2.5 w-2.5">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2 border-border bg-green-500" />
     </span>
   )
 }
@@ -356,10 +357,10 @@ export function Table({ head, children, className = '' }: { head: ReactNode; chi
     <div className={cx('card overflow-hidden', className)}>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead className="border-b border-border bg-surface-2">
+          <thead className="border-b-2 border-border bg-main text-main-foreground">
             <tr>{head}</tr>
           </thead>
-          <tbody className="divide-y divide-border">{children}</tbody>
+          <tbody className="divide-y-2 divide-border">{children}</tbody>
         </table>
       </div>
     </div>
@@ -369,7 +370,7 @@ export function Table({ head, children, className = '' }: { head: ReactNode; chi
 /** A clickable-feel table row with the standard hover. */
 export function Row({ className = '', children, ...props }: { className?: string; children: ReactNode } & HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr className={cx('hover:bg-surface-2', className)} {...props}>
+    <tr className={cx('hover:bg-background', className)} {...props}>
       {children}
     </tr>
   )
@@ -380,7 +381,7 @@ export function Detail({ label, className = '', children }: { label: ReactNode; 
   return (
     <div className={className}>
       <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-1 text-sm text-ink">{children}</div>
+      <div className="mt-1 text-sm text-foreground">{children}</div>
     </div>
   )
 }
@@ -388,7 +389,7 @@ export function Detail({ label, className = '', children }: { label: ReactNode; 
 /** A bordered list row: content on the left, optional actions on the right. */
 export function ListRow({ actions, className = '', children }: { actions?: ReactNode; className?: string; children: ReactNode }) {
   return (
-    <div className={cx('flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5', className)}>
+    <div className={cx('flex items-center justify-between gap-3 rounded-base border-2 border-border bg-secondary-background px-3 py-2.5', className)}>
       <div className="min-w-0">{children}</div>
       {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
@@ -400,7 +401,7 @@ export function CodeBlock({ scroll = false, className = '', children }: { scroll
   return (
     <pre
       className={cx(
-        'overflow-x-auto rounded-md border border-border bg-surface-2 p-3 text-xs text-muted',
+        'overflow-x-auto rounded-base border-2 border-border bg-secondary-background p-3 text-xs text-foreground',
         scroll && 'max-h-72 overflow-auto',
         className,
       )}
@@ -414,20 +415,20 @@ export function CodeBlock({ scroll = false, className = '', children }: { scroll
 export function ProgressBar({ value, className = '' }: { value: number; className?: string }) {
   const pct = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100
   return (
-    <div className={cx('h-2 overflow-hidden rounded-full bg-surface-2', className)}>
-      <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+    <div className={cx('h-4 overflow-hidden rounded-base border-2 border-border bg-secondary-background', className)}>
+      <div className="h-full bg-main" style={{ width: `${pct}%` }} />
     </div>
   )
 }
 
 export function Timeline({ children }: { children: ReactNode }) {
-  return <ol className="relative space-y-4 border-l border-border pl-5">{children}</ol>
+  return <ol className="relative space-y-4 border-l-2 border-border pl-5">{children}</ol>
 }
 
 export function TimelineItem({ children }: { children: ReactNode }) {
   return (
     <li className="relative">
-      <span className="absolute -left-[1.45rem] top-1 h-2.5 w-2.5 rounded-full bg-accent" />
+      <span className="absolute -left-[0.95rem] top-1 h-3 w-3 -translate-x-1/2 rounded-base border-2 border-border bg-main" />
       {children}
     </li>
   )
@@ -452,16 +453,16 @@ export function Modal({
 }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4" onClick={onClose} role="presentation">
       <div className="card max-h-[85vh] w-full max-w-2xl overflow-hidden p-0" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="font-semibold text-ink">{title}</h2>
-          <button className="text-muted hover:text-ink" onClick={onClose} aria-label="Close">
+        <div className="flex items-center justify-between border-b-2 border-border px-4 py-3">
+          <h2 className="font-heading text-foreground">{title}</h2>
+          <button className="text-foreground hover:text-main" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
         <div className="max-h-[60vh] overflow-y-auto p-4">{children}</div>
-        {footer !== undefined && <div className="flex justify-end gap-2 border-t border-border px-4 py-3">{footer}</div>}
+        {footer !== undefined && <div className="flex justify-end gap-2 border-t-2 border-border px-4 py-3">{footer}</div>}
       </div>
     </div>
   )
@@ -478,15 +479,17 @@ export function NavItem({ to, icon: Icon, label, badge }: { to: string; icon: Lu
       to={to}
       className={({ isActive }) =>
         cx(
-          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors',
-          isActive ? 'bg-accent-soft text-indigo-100' : 'text-muted hover:bg-surface-2 hover:text-ink',
+          'flex items-center gap-2.5 rounded-base border-2 px-2.5 py-2 text-sm font-base transition-all',
+          isActive
+            ? 'border-border bg-main text-main-foreground shadow-shadow'
+            : 'border-transparent text-foreground hover:border-border hover:bg-secondary-background',
         )
       }
     >
       <Icon className="h-4 w-4" />
       <span>{label}</span>
       {badge !== undefined && badge !== null && badge !== false && (
-        <span className="ml-auto rounded bg-amber-900/50 px-1.5 text-xs text-amber-300">{badge}</span>
+        <span className="ml-auto rounded-base border-2 border-border bg-amber-300 px-1.5 text-xs text-foreground">{badge}</span>
       )}
     </NavLink>
   )
@@ -499,7 +502,7 @@ export function NavButton({ icon: Icon, label, onClick, className = '' }: { icon
       type="button"
       onClick={onClick}
       className={cx(
-        'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink',
+        'flex items-center gap-2.5 rounded-base border-2 border-transparent px-2.5 py-2 text-sm font-base text-foreground transition-all hover:border-border hover:bg-secondary-background',
         className,
       )}
     >
