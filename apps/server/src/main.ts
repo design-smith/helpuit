@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     console.warn(
       `\n${prod ? '🔴 SECURITY' : '⚠'}: HELPUIT_ENCRYPTION_KEY is unset or weak — the secret vault is sealed with a guessable key.`,
     )
-    console.warn('   Run `pnpm setup` to generate a strong, stable key before storing real secrets.')
+    console.warn('   Run `pnpm run setup` to generate a strong, stable key before storing real secrets.')
     if (prod) console.warn('   Running in production with a weak key leaves secrets at rest effectively unprotected.\n')
   }
   const configStore = new DrizzleConfigStore(handle.db)

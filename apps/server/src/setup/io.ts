@@ -6,7 +6,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync, chmodSync } from
  * example, so this rarely fires; it just guarantees the booting server has a
  * parseable config (an empty config fails the schema's required sections).
  */
-export const FALLBACK_CONFIG_YAML = `# Seeded by \`pnpm setup\`. Describe YOUR product here; see helpuit.config.example.yaml.
+export const FALLBACK_CONFIG_YAML = `# Seeded by \`pnpm run setup\`. Describe YOUR product here; see helpuit.config.example.yaml.
 chatwoot:
   baseUrl: https://chat.example.com
   accountId: 1

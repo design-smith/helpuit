@@ -45,8 +45,11 @@ pnpm install
 ### Step 3 — Run the first-run bootstrap
 
 ```sh
-pnpm setup
+pnpm run setup
 ```
+
+> Use `pnpm run setup`, not `pnpm setup` — the latter is a built-in pnpm command (it configures
+> pnpm's own `PATH`) and shadows this script, so the wizard would silently never run.
 
 This one-time wizard prepares everything the app needs to boot. It:
 
@@ -57,8 +60,8 @@ This one-time wizard prepares everything the app needs to boot. It:
   (deployed) — plus **database** (press Enter for a local SQLite file), **`NODE_ENV`**, and **port**;
 - writes your **`.env`** (backing up any previous one) and seeds a valid **`helpuit.config.yaml`**.
 
-**Copy the admin token it prints at the end — you'll log in with it in Step 6.** Re-running `pnpm setup`
-is safe and idempotent. For Docker/CI, use `pnpm setup --yes` (reads everything from the environment).
+**Copy the admin token it prints at the end — you'll log in with it in Step 6.** Re-running `pnpm run setup`
+is safe and idempotent. For Docker/CI, use `pnpm run setup --yes` (reads everything from the environment).
 
 ### Step 4 — Build the operator console
 
@@ -157,11 +160,11 @@ Everything else is optional and adds capability.
 
 ## Configuration
 
-You rarely edit files after `pnpm setup` — the console (Connections, Configuration, Secrets, Manifest)
+You rarely edit files after `pnpm run setup` — the console (Connections, Configuration, Secrets, Manifest)
 is the primary surface. Structural settings apply live or via a one-click restart; secrets are encrypted
 at rest and never shown back. Two files back it:
 
-- **`.env`** — secrets + runtime (keys, tokens, `DATABASE_URL`, `NODE_ENV`, port). Written by `pnpm setup`;
+- **`.env`** — secrets + runtime (keys, tokens, `DATABASE_URL`, `NODE_ENV`, port). Written by `pnpm run setup`;
   gitignored. Template: [`.env.example`](.env.example).
 - **`helpuit.config.yaml`** — product/structural config (Chatwoot inbox, GitHub repo, LLM models,
   reproduction target, query routes, budgets, features). Template: [`helpuit.config.example.yaml`](helpuit.config.example.yaml).
@@ -175,7 +178,7 @@ at rest and never shown back. Two files back it:
 ## Development
 
 ```sh
-pnpm setup                       # first-run bootstrap (Step 3)
+pnpm run setup                   # first-run bootstrap (Step 3) — `run` avoids pnpm's built-in `setup`
 pnpm start                       # run the server from source (tsx); auto-loads .env
 pnpm start:tunnel                # same, but opens a Cloudflare tunnel + wires HELPUIT_PUBLIC_URL (= pnpm start --tunnel)
 pnpm --filter @helpuit/web dev   # operator console with hot-reload on :5173 (proxies /admin → :3000)
@@ -196,7 +199,7 @@ Drizzle ORM (libsql/SQLite), Playwright, Vitest. See [docs/ARCHITECTURE.md](docs
 
 For a production deploy (Docker, TLS/reverse proxy, backups, the admin API, metrics, scaling), follow
 **[docs/SELF-HOSTING.md](docs/SELF-HOSTING.md)**. In containers, run the bootstrap non-interactively with
-`pnpm setup --yes` (or provide the env vars directly) so the same flow applies.
+`pnpm run setup --yes` (or provide the env vars directly) so the same flow applies.
 
 ---
 
