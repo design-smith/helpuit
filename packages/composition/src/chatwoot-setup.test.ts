@@ -99,6 +99,21 @@ describe('autoSetupChatwoot', () => {
     expect(cw.webhooks).toHaveLength(1)
   })
 
+  it('explains a 401 (wrong or non-admin token) instead of a raw HTTP error', async () => {
+    const cw = await chatwootStub('correct-token')
+
+    const result = await autoSetupChatwoot({
+      baseUrl: cw.base,
+      token: 'wrong-token',
+      accountId: 3,
+      publicUrl: 'https://helpuit.example.com',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.detail).toMatch(/Personal Access Token|Profile Settings|Administrator/i)
+    expect(cw.bots).toHaveLength(0)
+  })
+
   it('refuses (clearly) when no public URL is configured', async () => {
     const cw = await chatwootStub()
 

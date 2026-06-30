@@ -382,6 +382,12 @@ function ChatwootAdvanced({ chatwoot }: { chatwoot: any }) {
           }}
         />
       </Field>
+      <Callout tone="info" className="text-xs">
+        Where to get it: in Chatwoot, click your <strong>avatar (bottom-left)</strong> →{' '}
+        <strong>Profile Settings</strong> → scroll to <strong>Access Token</strong> → copy. You must be an{' '}
+        <strong>Administrator</strong> (agents can't see the token, and creating the bot/webhook needs admin rights).
+        This is <em>not</em> an inbox identifier or website token. Paste it above, then <strong>Validate &amp; prefill</strong>.
+      </Callout>
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={onValidate} disabled={token === ''} loading={validate.isPending}>
           Validate &amp; prefill

@@ -64,14 +64,24 @@ export async function autoSetupChatwoot(input: {
   const acct = `${baseUrl}/api/v1/accounts/${input.accountId}`
   const headers = { api_access_token: input.token, 'content-type': 'application/json' }
 
+  // A 401/403 almost always means the wrong token (or a non-admin one), so say how
+  // to fix it rather than leaking a raw status. Agent bots/webhooks need an admin's
+  // Personal Access Token for THIS account.
+  const reason = (verb: string, path: string, status: number): string =>
+    status === 401 || status === 403
+      ? `Chatwoot rejected the request (${status}). Use an Administrator's Personal Access Token — in Chatwoot, ` +
+        `click your avatar (bottom-left) → Profile Settings → scroll to "Access Token" → copy. Confirm the Account ID ` +
+        `matches that admin's account (use "Validate & prefill"), and that the Base URL is your Chatwoot instance.`
+      : `Chatwoot ${verb} ${path} failed: HTTP ${status}`
+
   const getJson = async (path: string): Promise<unknown> => {
     const res = await fetch(`${acct}/${path}`, { headers })
-    if (!res.ok) throw new Error(`Chatwoot GET ${path} failed: HTTP ${res.status}`)
+    if (!res.ok) throw new Error(reason('GET', path, res.status))
     return res.json()
   }
   const postJson = async (path: string, payload: unknown): Promise<unknown> => {
     const res = await fetch(`${acct}/${path}`, { method: 'POST', headers, body: JSON.stringify(payload) })
-    if (!res.ok) throw new Error(`Chatwoot POST ${path} failed: HTTP ${res.status}`)
+    if (!res.ok) throw new Error(reason('POST', path, res.status))
     return res.json()
   }
 
