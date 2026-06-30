@@ -33,10 +33,9 @@ describe('integrationStatuses', () => {
     expect(byId.chatwoot!.access).toBe('account #3 · inbox #2')
   })
 
-  it('surfaces a structural issue and marks the integration not-connected (jwt missing jwksUrl)', () => {
-    expect(byId.identity!.connected).toBe(false)
-    expect(byId.identity!.issue).toContain('jwksUrl')
-    expect(byId.identity!.account).toBe('jwt')
+  it('does NOT include identity — it is configured in setup / Configuration, not as a Connections card', () => {
+    expect(byId.identity).toBeUndefined()
+    expect(integrationStatuses(view).map((s) => s.id)).toEqual(['github', 'chatwoot', 'llm'])
   })
 
   it('maps the LLM provider to its credential and model', () => {

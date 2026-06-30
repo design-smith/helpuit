@@ -12,6 +12,7 @@ import {
   Section,
   Select,
 } from '../../components/ui'
+import { IdentityFormInner } from './IdentityForm'
 
 /** A config section with its own draft state + Apply button + result feedback. */
 function SectionCard({
@@ -68,6 +69,12 @@ export function ConfigurationPage() {
         <BudgetCard budget={cfg.budget} />
         <AlertsCard alerts={cfg.alerts} />
         <ModelsCard models={cfg.models} />
+        <Section
+          title="Identity"
+          hint="How Helpuit verifies a customer's login token before reading their account data (the secret is stored under Secrets)."
+        >
+          <IdentityFormInner identity={cfg.identity} />
+        </Section>
       </div>
     </div>
   )

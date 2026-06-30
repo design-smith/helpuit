@@ -49,7 +49,6 @@ import {
   Textarea,
   Toggle,
 } from '../../components/ui'
-import { IdentityFormInner } from './IdentityForm'
 import { parseColumnList } from './scaffold-form'
 import { integrationStatuses, availableLlmProviders, type IntegrationStatus } from './integration-status'
 
@@ -70,7 +69,6 @@ export function ConnectionsPage() {
   const advanced: Record<string, ReactNode> = {
     github: <GithubAdvanced github={data.config.github} />,
     chatwoot: <ChatwootAdvanced chatwoot={data.config.chatwoot} />,
-    identity: <IdentityFormInner identity={data.config.identity} />,
   }
 
   return (

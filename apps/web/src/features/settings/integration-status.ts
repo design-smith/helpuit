@@ -1,6 +1,6 @@
 import type { EffectiveConfigView } from '../../lib/api'
 
-export type IntegrationId = 'github' | 'chatwoot' | 'identity' | 'llm'
+export type IntegrationId = 'github' | 'chatwoot' | 'llm'
 
 export interface IntegrationStatus {
   id: IntegrationId
@@ -13,7 +13,7 @@ export interface IntegrationStatus {
   issue?: string
   /** The connected account/owner/provider name (shown when connected). */
   account?: string
-  /** What it's scoped to — GitHub: owner/repo; Chatwoot: account+inbox; LLM: model; Identity: id claim. */
+  /** What it's scoped to — GitHub: owner/repo; Chatwoot: account+inbox; LLM: model. */
   access?: string
 }
 
@@ -51,16 +51,6 @@ export function integrationStatuses(view: EffectiveConfigView): IntegrationStatu
   const issueOf = (prefix: string): string | undefined => view.structuralIssues.find((s) => s.startsWith(`${prefix}.`))
   const enabled = (id: IntegrationId): boolean => cfg.integrations?.[id] ?? true
 
-  const mode = cfg.identity?.mode as string | undefined
-  const identityConnected =
-    mode === 'hmac'
-      ? isSet('IDENTITY_HMAC_SECRET')
-      : mode === 'endpoint'
-        ? isSet('IDENTITY_VERIFY_TOKEN')
-        : mode === 'jwt'
-          ? issueOf('identity') === undefined
-          : false
-
   const provider = cfg.models?.provider as string | undefined
 
   return [
@@ -89,15 +79,6 @@ export function integrationStatuses(view: EffectiveConfigView): IntegrationStatu
         cfg.chatwoot?.accountId !== undefined
           ? `account #${cfg.chatwoot.accountId} · inbox #${cfg.chatwoot.inboxId}`
           : undefined,
-    },
-    {
-      id: 'identity',
-      label: 'Identity',
-      connected: identityConnected,
-      enabled: enabled('identity'),
-      issue: issueOf('identity'),
-      account: mode,
-      access: cfg.identity?.useridClaim ? `claim: ${cfg.identity.useridClaim}` : undefined,
     },
     {
       id: 'llm',
