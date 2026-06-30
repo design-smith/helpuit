@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { AdminApi } from '@helpuit/composition'
 import type { DocSource } from '@helpuit/db'
@@ -14,6 +15,46 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
 } from './server.js'
+
+/**
+ * OAuth `state` that also carries the chosen redirect URI (HMAC-signed with the
+ * admin token). The provider echoes `state` back to our callback, so we can recover
+ * the EXACT redirect_uri the authorize step used and reuse it for the token exchange
+ * — without depending on the (proxy-obscured, possibly-ephemeral) request host.
+ */
+function signRedirectState(adminToken: string, expiry: number, redirectUri: string): string {
+  const payload = Buffer.from(JSON.stringify({ e: expiry, r: redirectUri })).toString('base64url')
+  const mac = createHmac('sha256', adminToken).update(payload).digest('base64url')
+  return `${payload}.${mac}`
+}
+
+/** Verify a {@link signRedirectState} value; returns the redirect URI ('' = use default), or undefined if invalid/expired. */
+function readRedirectState(state: string | undefined, adminToken: string, now: number): string | undefined {
+  if (state === undefined) return undefined
+  const dot = state.indexOf('.')
+  if (dot < 0) return undefined
+  const payload = state.slice(0, dot)
+  const expected = createHmac('sha256', adminToken).update(payload).digest('base64url')
+  if (!constantTimeEqual(state.slice(dot + 1), expected)) return undefined
+  try {
+    const { e, r } = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { e?: number; r?: string }
+    if (typeof e === 'number' && e > now && typeof r === 'string') return r
+  } catch {
+    /* malformed payload */
+  }
+  return undefined
+}
+
+/** Accept a client-supplied redirect only if it's our exact callback path on a real origin. */
+function validRedirect(value: unknown, path: string): string | undefined {
+  if (typeof value !== 'string') return undefined
+  try {
+    const u = new URL(value)
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.pathname === path ? value : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export interface AdminRoutesOptions {
   token: string
@@ -465,15 +506,24 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
   const supabase = api.supabaseConnect
   app.get(
     '/admin/connect/supabase/manifest',
-    guard(async () => {
-      const state = signSession(token, now() + SESSION_TTL_MS)
-      return { url: await supabase.authorizeUrl(state), state }
+    guard(async (request) => {
+      // Prefer the origin the operator is actually on (e.g. http://localhost:3000) so
+      // the redirect is STABLE across restarts — the ephemeral tunnel changes every
+      // time and breaks the OAuth allow-list. The chosen redirect rides along in state.
+      const redirectUri = validRedirect(
+        (request.query as Record<string, unknown>).redirectUri,
+        '/admin/connect/supabase/callback',
+      )
+      const state = signRedirectState(token, now() + SESSION_TTL_MS, redirectUri ?? '')
+      return { url: await supabase.authorizeUrl(state, redirectUri), state }
     }),
   )
-  // Cross-site redirect from Supabase — state-gated, not cookie-gated.
+  // Cross-site redirect from Supabase — state-gated, not cookie-gated. The redirect
+  // URI used at authorize is recovered from the signed state for the token exchange.
   app.get('/admin/connect/supabase/callback', async (request, reply) => {
     const q = request.query as Record<string, unknown>
-    if (typeof q.state !== 'string' || !verifySession(q.state, token, now())) {
+    const redirectUri = readRedirectState(typeof q.state === 'string' ? q.state : undefined, token, now())
+    if (redirectUri === undefined) {
       reply.code(401)
       return { status: 'unauthorized' }
     }
@@ -481,7 +531,7 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
       reply.code(400)
       return { status: 'invalid', message: 'missing code' }
     }
-    await supabase.completeCallback(q.code)
+    await supabase.completeCallback(q.code, redirectUri === '' ? undefined : redirectUri)
     return reply.redirect('/settings/connections?supabase=connected')
   })
   app.get('/admin/connect/supabase/projects', guard(() => supabase.listProjects()))

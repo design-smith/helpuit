@@ -19,8 +19,10 @@ export interface SupabaseProject {
 }
 
 export interface SupabaseConnectionService {
-  authorizeUrl(state: string): Promise<string>
-  completeCallback(code: string): Promise<void>
+  /** `redirectUri` overrides the public-URL default — pass the origin the operator
+   *  opens the console at (e.g. http://localhost:3000/...callback) so it's stable. */
+  authorizeUrl(state: string, redirectUri?: string): Promise<string>
+  completeCallback(code: string, redirectUri?: string): Promise<void>
   listProjects(): Promise<SupabaseProject[]>
   listTables(ref: string): Promise<string[]>
   listColumns(ref: string, table: string): Promise<string[]>
@@ -59,25 +61,26 @@ export class SupabaseConnection implements SupabaseConnectionService {
     return (await this.deps.vault.openAll()).secrets[key] ?? ''
   }
 
-  async authorizeUrl(state: string): Promise<string> {
+  async authorizeUrl(state: string, redirectUri?: string): Promise<string> {
     const clientId = await this.secret(SUPABASE_OAUTH_CLIENT_ID)
     if (clientId === '') throw new Error('Supabase OAuth app is not configured (set SUPABASE_OAUTH_CLIENT_ID).')
     const u = new URL(`${this.api}/v1/oauth/authorize`)
     u.searchParams.set('client_id', clientId)
-    u.searchParams.set('redirect_uri', this.redirectUri())
+    u.searchParams.set('redirect_uri', redirectUri ?? this.redirectUri())
     u.searchParams.set('response_type', 'code')
     u.searchParams.set('state', state)
     return u.toString()
   }
 
-  async completeCallback(code: string): Promise<void> {
+  async completeCallback(code: string, redirectUri?: string): Promise<void> {
     const res = await fetch(`${this.api}/v1/oauth/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: this.redirectUri(),
+        // MUST match the redirect_uri used in authorizeUrl, or Supabase 400s the exchange.
+        redirect_uri: redirectUri ?? this.redirectUri(),
         client_id: await this.secret(SUPABASE_OAUTH_CLIENT_ID),
         client_secret: await this.secret(SUPABASE_OAUTH_CLIENT_SECRET),
       }).toString(),

@@ -20,17 +20,26 @@ import {
 
 let server: Server | undefined
 let handle: DbHandle | undefined
+/** The redirect_uri the service sent on the most recent token exchange (for assertions). */
+let lastTokenRedirect: string | undefined
 afterEach(async () => {
   server?.close()
   handle?.close()
+  lastTokenRedirect = undefined
 })
 
 /** A fake Supabase API (OAuth token + Management API). */
 async function fakeSupabase(): Promise<string> {
   server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => handle2(req, res, body))
+  })
+  const handle2 = (req: IncomingMessage, res: ServerResponse, body: string): void => {
     const url = req.url ?? ''
     res.setHeader('content-type', 'application/json')
     if (req.method === 'POST' && url === '/v1/oauth/token') {
+      lastTokenRedirect = new URLSearchParams(body).get('redirect_uri') ?? undefined
       res.end(JSON.stringify({ access_token: 'access-1', refresh_token: 'refresh-1' }))
     } else if (req.method === 'GET' && url === '/v1/projects') {
       res.end(JSON.stringify([{ ref: 'abcd', name: 'My Project', organization_id: 'org-1', region: 'us-east-1' }]))
@@ -44,7 +53,7 @@ async function fakeSupabase(): Promise<string> {
       res.statusCode = 404
       res.end('{}')
     }
-  })
+  }
   await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()))
   return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`
 }
@@ -76,6 +85,24 @@ describe('SupabaseConnection', () => {
     expect(url.searchParams.get('redirect_uri')).toBe('https://helpuit.example.com/admin/connect/supabase/callback')
     expect(url.searchParams.get('response_type')).toBe('code')
     expect(url.searchParams.get('state')).toBe('state-123')
+  })
+
+  it('uses a caller-supplied redirect_uri (e.g. the stable browser origin) over the public URL', async () => {
+    const { svc } = await build()
+    const redirect = 'http://localhost:3000/admin/connect/supabase/callback'
+
+    const url = new URL(await svc.authorizeUrl('state-123', redirect))
+    expect(url.searchParams.get('redirect_uri')).toBe(redirect)
+
+    // The token exchange MUST reuse the same redirect_uri, or Supabase rejects it.
+    await svc.completeCallback('the-code', redirect)
+    expect(lastTokenRedirect).toBe(redirect)
+  })
+
+  it('falls back to the public URL redirect when no redirect_uri is supplied (back-compat)', async () => {
+    const { svc } = await build()
+    const url = new URL(await svc.authorizeUrl('state-123'))
+    expect(url.searchParams.get('redirect_uri')).toBe('https://helpuit.example.com/admin/connect/supabase/callback')
   })
 
   it('exchanges the code for tokens and stores them in the vault', async () => {

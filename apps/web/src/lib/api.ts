@@ -749,7 +749,12 @@ export interface SupabaseProject {
 export function useSupabaseConnect() {
   return useMutation({
     mutationFn: async () => {
-      const { url } = await api<{ url: string; state: string }>('/admin/connect/supabase/manifest')
+      // Redirect back to wherever the operator opened the console (e.g. localhost) —
+      // a stable URL to register once, rather than the ephemeral tunnel host.
+      const redirectUri = `${window.location.origin}/admin/connect/supabase/callback`
+      const { url } = await api<{ url: string; state: string }>(
+        `/admin/connect/supabase/manifest?redirectUri=${encodeURIComponent(redirectUri)}`,
+      )
       window.location.assign(url)
     },
   })
