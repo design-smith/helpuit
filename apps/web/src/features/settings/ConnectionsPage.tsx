@@ -549,6 +549,13 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
   // so you can always back out — and the connect flow when nothing is wired.
   const connected = configured || oauthConnected
 
+  // The EXACT redirect URI the server sends to Supabase (built from HELPUIT_PUBLIC_URL).
+  // It must be registered verbatim on the OAuth app, or authorize fails with
+  // "redirect_uri not allowed". An ephemeral tunnel host changes every restart.
+  const publicUrl = ((data.config.runtime as { publicUrl?: string } | undefined)?.publicUrl ?? '').replace(/\/+$/, '')
+  const redirectUri = publicUrl === '' ? '' : `${publicUrl}/admin/connect/supabase/callback`
+  const ephemeralTunnel = publicUrl.includes('trycloudflare.com')
+
   return (
     <Section
       title="Database"
@@ -636,8 +643,20 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
               <strong>Projects: Read</strong>, <strong>Database: Write</strong>, <strong>Secrets: Read</strong>.
             </li>
             <li>
-              Set its redirect URL to:
-              <CodeBlock>{`${window.location.origin}/admin/connect/supabase/callback`}</CodeBlock>
+              Set its redirect URL to <strong>exactly</strong> this (it must match{' '}
+              <span className="font-mono">HELPUIT_PUBLIC_URL</span> character-for-character):
+              <CodeBlock>
+                {redirectUri !== '' ? redirectUri : 'Set HELPUIT_PUBLIC_URL first — then this shows the exact URL to register.'}
+              </CodeBlock>
+              {ephemeralTunnel && (
+                <Callout tone="warn" className="mt-1">
+                  This is a temporary <span className="font-mono">trycloudflare.com</span> tunnel — its hostname changes
+                  on every restart, so this redirect URL will stop matching and Supabase will reject it with{' '}
+                  <span className="font-mono">redirect_uri not allowed</span>. Use a stable public URL (a named tunnel
+                  or your own domain), or re-paste this URL into the OAuth app after each restart. For local dev, the
+                  manual connection string below skips OAuth entirely.
+                </Callout>
+              )}
             </li>
             <li>
               Copy the app&apos;s <strong>Client ID</strong> and <strong>Client secret</strong>.
