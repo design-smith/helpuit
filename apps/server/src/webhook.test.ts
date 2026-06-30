@@ -38,7 +38,7 @@ function token(userId: string): string {
   return `${userId}.${createHmac('sha256', SECRET).update(userId).digest('hex')}`
 }
 
-async function liveServer(opts: { rateLimiter?: RateLimiter; metrics?: Metrics } = {}) {
+async function liveServer(opts: { rateLimiter?: RateLimiter; metrics?: Metrics; chatwootEnabled?: () => boolean } = {}) {
   const llmUrl = await startServer((_req, res) => {
     res.setHeader('content-type', 'application/json')
     res.end(
@@ -92,6 +92,7 @@ models:
       intake: (payload, context) => orchestrator.handleInbound(payload, context),
       idempotency,
       rateLimiter: opts.rateLimiter,
+      enabled: opts.chatwootEnabled,
     },
     metrics: opts.metrics,
   })
@@ -140,6 +141,21 @@ describe('POST /webhooks/chatwoot — live L1 round-trip', () => {
     expect(await second.json()).toEqual({ status: 'duplicate' })
     expect(chatwootReplies).toHaveLength(1)
     expect(await db.select().from(investigations)).toHaveLength(1)
+  })
+
+  it('skips intake entirely when the Chatwoot integration is turned off (paused)', async () => {
+    const { base, chatwootReplies, db } = await liveServer({ chatwootEnabled: () => false })
+
+    const res = await fetch(`${base}/webhooks/chatwoot`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(inboundPayload(3001)),
+    })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'skipped' })
+    expect(chatwootReplies).toEqual([]) // agent stayed silent — nothing processed
+    expect(await db.select().from(investigations)).toHaveLength(0)
   })
 
   it('rate-limits a flood of messages on one conversation', async () => {

@@ -30,6 +30,8 @@ export const docs = pgTable('helpuit_docs', {
   id: text('id').primaryKey(),
   title: text('title'),
   text: text('text').notNull(),
+  source: text('source'),
+  externalId: text('external_id'),
   createdAt: ts('created_at').notNull(),
 })
 

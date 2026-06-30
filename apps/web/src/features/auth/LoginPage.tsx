@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLogin } from '../../lib/api'
-import { Button, Field, FormResult, Input } from '../../components/ui'
+import { Button, Field, FormResult, Input, Logo } from '../../components/ui'
 
 export function LoginPage() {
   const [token, setToken] = useState('')
@@ -23,14 +23,9 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <form onSubmit={onSubmit} className="card w-full max-w-sm p-6">
-        <div className="mb-5 flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-sm font-bold text-white">
-            H
-          </div>
-          <div>
-            <div className="font-semibold text-ink">Helpuit Console</div>
-            <div className="text-xs text-muted">Operator sign-in</div>
-          </div>
+        <div className="mb-6">
+          <Logo className="h-9 w-auto select-none" />
+          <div className="mt-2 text-xs text-muted">Operator sign-in</div>
         </div>
         <Field label="Admin token">
           <Input

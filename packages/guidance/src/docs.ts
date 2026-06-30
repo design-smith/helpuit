@@ -13,6 +13,10 @@ export interface DocChunk {
 
 export interface DocsIndex {
   ingest(docs: Doc[]): void
+  /** Insert or replace a single doc by id (live refresh — no duplicate). */
+  upsert(doc: Doc): void
+  /** Drop a doc from the index by id. */
+  removeById(id: string): void
   retrieve(query: string, k?: number): DocChunk[]
 }
 
@@ -30,6 +34,17 @@ export class InMemoryDocsIndex implements DocsIndex {
 
   ingest(docs: Doc[]): void {
     this.docs.push(...docs)
+  }
+
+  upsert(doc: Doc): void {
+    const i = this.docs.findIndex((d) => d.id === doc.id)
+    if (i >= 0) this.docs[i] = doc
+    else this.docs.push(doc)
+  }
+
+  removeById(id: string): void {
+    const i = this.docs.findIndex((d) => d.id === id)
+    if (i >= 0) this.docs.splice(i, 1)
   }
 
   retrieve(query: string, k = 3): DocChunk[] {

@@ -7,7 +7,7 @@ import type {
   TextareaHTMLAttributes,
 } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { Loader2, AlertTriangle, CheckCircle2, Circle, Inbox, type LucideIcon } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, Circle, Inbox, ChevronRight, type LucideIcon } from 'lucide-react'
 
 /**
  * THE design system — neobrutalism (thick black borders, hard offset shadows, bold
@@ -111,6 +111,17 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
       {actions !== undefined && <div className="flex items-center gap-2">{actions}</div>}
     </div>
   )
+}
+
+/**
+ * The Helpuit brand logo. Default is the full wordmark lockup (mark + HELPUIT);
+ * `mark` shows just the H. Both use the dark-art variants, which read on the
+ * console's light surfaces. Size via `className` (e.g. `h-8 w-auto`).
+ */
+export function Logo({ mark = false, className = '' }: { mark?: boolean; className?: string }) {
+  // Served from Vite's publicDir (apps/web/src/public). Exact case matters in prod (Linux).
+  const src = mark ? '/Helpuitlogo-no-text-dark.png' : '/helpuitlogo-light.png'
+  return <img src={src} alt="Helpuit" className={className} draggable={false} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -496,6 +507,99 @@ export function NavItem({ to, icon: Icon, label, badge }: { to: string; icon: Lu
 }
 
 /** A sidebar action styled like a {@link NavItem} (e.g. Sign out) but driven by onClick. */
+/**
+ * Neobrutalist on/off switch. `disabled` greys it out (and forces the visual off).
+ * Used for the connection toggles.
+ */
+export function Toggle({
+  checked,
+  disabled = false,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  disabled?: boolean
+  onChange: (next: boolean) => void
+  label?: string
+}) {
+  const on = checked && !disabled
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cx(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-base border-2 border-border transition-colors',
+        on ? 'bg-main' : 'bg-secondary-background',
+        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+      )}
+    >
+      <span
+        className={cx(
+          'inline-block h-4 w-4 rounded-[3px] border-2 border-border bg-background transition-transform',
+          on ? 'translate-x-5' : 'translate-x-0.5',
+        )}
+      />
+    </button>
+  )
+}
+
+/** An expandable "Advanced ▾" disclosure. Caller owns the open state. */
+export function Disclosure({
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-1 text-sm font-base text-muted transition-colors hover:text-foreground"
+        aria-expanded={open}
+      >
+        <ChevronRight className={cx('h-4 w-4 transition-transform', open && 'rotate-90')} />
+        {label}
+      </button>
+      {open && <div className="mt-3 space-y-3">{children}</div>}
+    </div>
+  )
+}
+
+/** A horizontal, URL-synced tab bar for in-page section switching (one NavLink per tab). */
+export function Tabs({ items, className = '' }: { items: Array<{ to: string; label: string }>; className?: string }) {
+  return (
+    <div className={cx('flex flex-wrap gap-2 border-b-2 border-border pb-3', className)}>
+      {items.map((tab) => (
+        <NavLink
+          key={tab.to}
+          to={tab.to}
+          end
+          className={({ isActive }) =>
+            cx(
+              'rounded-base border-2 px-3 py-1.5 text-sm font-base transition-all',
+              isActive
+                ? 'border-border bg-main text-main-foreground shadow-shadow'
+                : 'border-transparent text-foreground hover:border-border hover:bg-secondary-background',
+            )
+          }
+        >
+          {tab.label}
+        </NavLink>
+      ))}
+    </div>
+  )
+}
+
 export function NavButton({ icon: Icon, label, onClick, className = '' }: { icon: LucideIcon; label: string; onClick: () => void; className?: string }) {
   return (
     <button

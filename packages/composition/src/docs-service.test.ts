@@ -41,6 +41,48 @@ describe('DocsService', () => {
     expect(answer.sources).toContain(doc.id)
   })
 
+  it('importDoc persists + grounds live, and re-import replaces in place (no duplicate)', async () => {
+    handle = await createDb(':memory:')
+    const service = await DocsService.create(handle.db)
+
+    const v1 = await service.importDoc({
+      source: 'gdrive',
+      externalId: 'file-1',
+      title: 'Refunds',
+      text: 'Refunds take five business days.',
+    })
+    // Live in the index (grounds L1) and persisted with its source identity.
+    const answer = await new GuidanceAgent(service.index, fixedModel).answer('how long do refunds take?')
+    expect(answer.sources).toContain(v1.id)
+    expect((await service.list())[0]).toMatchObject({ id: v1.id, source: 'gdrive', externalId: 'file-1' })
+
+    // Re-importing the same file refreshes it in place — same id, no duplicate, new text live.
+    const v2 = await service.importDoc({ source: 'gdrive', externalId: 'file-1', text: 'Refunds now take ten business days.' })
+    expect(v2.id).toBe(v1.id)
+    expect(await service.list()).toHaveLength(1)
+    const hits = service.index.retrieve('refunds business days')
+    expect(hits).toHaveLength(1)
+    expect(hits[0]!.text).toContain('ten business days')
+  })
+
+  it('remove drops the doc from the live index so it stops grounding immediately (no restart)', async () => {
+    handle = await createDb(':memory:')
+    const service = await DocsService.create(handle.db)
+    const doc = await service.add({ title: 'Old policy', text: 'The old refund window was seven days.' })
+
+    // Grounds before removal.
+    const before = await new GuidanceAgent(service.index, fixedModel).answer('what was the refund window?')
+    expect(before.sources).toContain(doc.id)
+
+    const removed = await service.remove(doc.id)
+    expect(removed).toBe(true)
+
+    // Gone from the store AND the live index — no longer grounds, with no restart.
+    expect(await service.list()).toHaveLength(0)
+    const after = await new GuidanceAgent(service.index, fixedModel).answer('what was the refund window?')
+    expect(after.sources).not.toContain(doc.id)
+  })
+
   it('grounds on nothing when no docs are ingested (unchanged behavior, no crash)', async () => {
     handle = await createDb(':memory:')
     const service = await DocsService.create(handle.db)

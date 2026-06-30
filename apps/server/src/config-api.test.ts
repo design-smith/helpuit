@@ -39,6 +39,7 @@ budget: { perDay: 1000 }
 `
 const ENV = {
   HELPUIT_PUBLIC_URL: 'https://helpuit.example.com',
+  HELPUIT_ENCRYPTION_KEY: 'master', // align the admin-api vault box with the supervisor's vault
   CHATWOOT_API_TOKEN: 'cw',
   GITHUB_TOKEN: 'gh',
   IDENTITY_HMAC_SECRET: 'h',
@@ -142,6 +143,70 @@ describe('config + secrets API', () => {
       body: JSON.stringify({ value: '' }),
     })
     expect(res.status).toBe(400)
+  })
+
+  it('toggles an integration off LIVE (no restart) via the integrations section', async () => {
+    const base = await start()
+    const res = await fetch(`${base}/admin/config/section/integrations`, {
+      method: 'PUT',
+      headers: bearer,
+      body: JSON.stringify({ github: false }),
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { mode: string }).mode).toBe('live')
+
+    const view = (await (await fetch(`${base}/admin/config/effective`, { headers: bearer })).json()) as {
+      config: { integrations: { github: boolean; chatwoot: boolean } }
+    }
+    expect(view.config.integrations.github).toBe(false)
+    expect(view.config.integrations.chatwoot).toBe(true) // the rest stay on
+  })
+
+  it('disconnects GitHub — clears its secrets and resets App auth to PAT (restart-required)', async () => {
+    const base = await start()
+    const res = await fetch(`${base}/admin/connections/github/disconnect`, { method: 'POST', headers: bearer })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true)
+
+    const status = (await (await fetch(`${base}/admin/config/restart-status`, { headers: bearer })).json()) as {
+      pending: boolean
+      reasons: string[]
+    }
+    expect(status.pending).toBe(true)
+    expect(status.reasons).toContain('secret:GITHUB_TOKEN')
+    expect(status.reasons).toContain('config:github')
+
+    const view = (await (await fetch(`${base}/admin/config/effective`, { headers: bearer })).json()) as {
+      config: { github: { auth: string } }
+    }
+    expect(view.config.github.auth).toBe('pat')
+  })
+
+  it('rejects disconnecting an unknown integration with 400', async () => {
+    const base = await start()
+    const res = await fetch(`${base}/admin/connections/nope/disconnect`, { method: 'POST', headers: bearer })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false)
+  })
+
+  it('builds a Supabase OAuth authorize URL and state-gates the callback', async () => {
+    const base = await start()
+    await fetch(`${base}/admin/config/secret/SUPABASE_OAUTH_CLIENT_ID`, {
+      method: 'PUT',
+      headers: bearer,
+      body: JSON.stringify({ value: 'cid' }),
+    })
+
+    const res = await fetch(`${base}/admin/connect/supabase/manifest`, { headers: bearer })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { url: string; state: string }
+    expect(body.url).toContain('/v1/oauth/authorize')
+    expect(body.url).toContain('client_id=cid')
+    expect(body.url).toContain(encodeURIComponent('https://helpuit.example.com/admin/connect/supabase/callback'))
+    expect(typeof body.state).toBe('string')
+
+    const cb = await fetch(`${base}/admin/connect/supabase/callback?code=x&state=forged`, { redirect: 'manual' })
+    expect(cb.status).toBe(401)
   })
 
   it('serves a GitHub App manifest + state, and state-gates the callback', async () => {

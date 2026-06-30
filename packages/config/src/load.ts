@@ -59,6 +59,8 @@ export interface HelpuitConfig {
   }
   identity: Structured['identity'] & { secret?: string; verifyToken?: string }
   queryRoutes?: NonNullable<Structured['queryRoutes']> & { token: string }
+  /** L2 account-data source + the read credential bound from the vault (service key / db url). */
+  accountData: Structured['accountData'] & { serviceKey?: string; dbUrl?: string }
   reproduction: Structured['reproduction'] & { sandboxAccounts: Record<string, SandboxAccount> }
   features: Structured['features']
   docs: Structured['docs']
@@ -67,6 +69,8 @@ export interface HelpuitConfig {
   budget: Structured['budget']
   retention: Structured['retention']
   alerts: Structured['alerts']
+  /** Per-integration on/off switches (console connection toggles). */
+  integrations: Structured['integrations']
   /** Data-protection + ops secrets (env-only). */
   security: { encryptionKey?: string; adminToken?: string; alertWebhookUrl?: string }
 }
@@ -190,6 +194,13 @@ function bindConfig(raw: unknown, env: Env, opts: { lenient: boolean }): BindRes
     queryRoutes = { ...cfg.queryRoutes, token: requireSecret('QUERY_ROUTES_TOKEN') }
   }
 
+  // L2 direct sources bind their read credential from the vault; missing → reported, not thrown.
+  const accountData: HelpuitConfig['accountData'] = {
+    ...cfg.accountData,
+    serviceKey: cfg.accountData.source === 'supabase' ? requireSecret('SUPABASE_SERVICE_KEY') : undefined,
+    dbUrl: cfg.accountData.source === 'postgres' ? requireSecret('ACCOUNT_DB_URL') : undefined,
+  }
+
   const sandboxAccounts: Record<string, SandboxAccount> = {}
   for (const role of cfg.reproduction.sandboxRoles) {
     const upper = role.toUpperCase()
@@ -241,6 +252,7 @@ function bindConfig(raw: unknown, env: Env, opts: { lenient: boolean }): BindRes
     },
     identity: { ...cfg.identity, secret: identitySecret, verifyToken },
     queryRoutes,
+    accountData,
     reproduction: { ...cfg.reproduction, sandboxAccounts },
     features: cfg.features,
     docs: cfg.docs,
@@ -249,6 +261,7 @@ function bindConfig(raw: unknown, env: Env, opts: { lenient: boolean }): BindRes
     budget: cfg.budget,
     retention: cfg.retention,
     alerts: cfg.alerts,
+    integrations: cfg.integrations,
     security: {
       encryptionKey: env.HELPUIT_ENCRYPTION_KEY,
       adminToken: env.HELPUIT_ADMIN_TOKEN,
@@ -334,6 +347,11 @@ export function maskConfig(config: HelpuitConfig): Record<string, unknown> {
     identity: { ...config.identity, secret: mask(config.identity.secret), verifyToken: mask(config.identity.verifyToken) },
     queryRoutes:
       config.queryRoutes !== undefined ? { ...config.queryRoutes, token: mask(config.queryRoutes.token) } : undefined,
+    accountData: {
+      ...config.accountData,
+      serviceKey: mask(config.accountData.serviceKey),
+      dbUrl: mask(config.accountData.dbUrl),
+    },
     reproduction: {
       ...config.reproduction,
       sandboxAccounts: Object.fromEntries(
@@ -373,6 +391,7 @@ export function maskConfig(config: HelpuitConfig): Record<string, unknown> {
     budget: config.budget,
     retention: config.retention,
     alerts: config.alerts,
+    integrations: config.integrations,
     security: {
       encryptionKey: mask(config.security.encryptionKey),
       adminToken: mask(config.security.adminToken),

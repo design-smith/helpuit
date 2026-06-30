@@ -14,10 +14,10 @@ export interface GettingStartedStep {
 
 /** The onboarding steps, in order. Mirrors the setup connectors the operator must wire. */
 export const GETTING_STARTED_STEPS: readonly GettingStartedStep[] = [
-  { id: 'github', title: 'Connect GitHub', href: '/connections' },
-  { id: 'chatwoot', title: 'Connect Chatwoot', href: '/connections' },
-  { id: 'llm', title: 'Choose an LLM provider', href: '/settings' },
-  { id: 'identity', title: 'Verify customer identity', href: '/settings' },
+  { id: 'github', title: 'Connect GitHub', href: '/settings/connections' },
+  { id: 'chatwoot', title: 'Connect Chatwoot', href: '/settings/connections' },
+  { id: 'llm', title: 'Choose an LLM provider', href: '/settings/configuration' },
+  { id: 'identity', title: 'Verify customer identity', href: '/settings/configuration' },
 ]
 
 export const GETTING_STARTED_STORAGE_KEY = 'helpuit.gettingStarted.v1'

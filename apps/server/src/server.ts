@@ -98,6 +98,12 @@ export interface ChatwootWebhook {
   idempotency?: { claim: (id: string) => Promise<boolean> }
   /** Optional per-conversation rate limiter; `allow` returning false → 429. */
   rateLimiter?: { allow: (key: string, at: number) => boolean }
+  /**
+   * Live on/off check for the Chatwoot integration. When it returns false the
+   * webhook is acknowledged but NOT processed (the agent behaves as if Chatwoot
+   * were never connected). Absent → always on.
+   */
+  enabled?: () => boolean
 }
 
 interface ChatwootWebhookPayload {
@@ -266,6 +272,14 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   if (chatwoot !== undefined) {
     app.post('/webhooks/chatwoot', async (request, reply) => {
       metrics?.recordWebhook('chatwoot')
+
+      // Integration paused (console toggle): acknowledge but do nothing — no claim,
+      // no enqueue, no reply. The agent behaves as if Chatwoot were never connected.
+      if (chatwoot.enabled !== undefined && !chatwoot.enabled()) {
+        reply.code(200)
+        return { status: 'skipped' }
+      }
+
       const payload = (request.body ?? {}) as ChatwootWebhookPayload
 
       // Idempotency: skip a webhook we've already acted on.

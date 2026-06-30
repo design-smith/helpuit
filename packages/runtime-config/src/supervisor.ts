@@ -22,6 +22,9 @@ const OPTIONAL_SECRETS = [
   'AWS_ACCESS_KEY_ID',
   'AWS_SECRET_ACCESS_KEY',
   'OPENAI_COMPATIBLE_API_KEY',
+  // Operator-set Supabase OAuth app (for the one-click account-data connect).
+  'SUPABASE_OAUTH_CLIENT_ID',
+  'SUPABASE_OAUTH_CLIENT_SECRET',
 ]
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/
 

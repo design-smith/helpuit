@@ -1,7 +1,7 @@
 import { createClient, type Client } from '@libsql/client'
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
 import { schema } from './schema.js'
-import { MIGRATION_SQL } from './migrations.js'
+import { MIGRATION_SQL, COLUMN_BACKFILL } from './migrations.js'
 
 export type Db = LibSQLDatabase<typeof schema>
 
@@ -69,6 +69,21 @@ export async function createDb(url = ':memory:', options: CreateDbOptions = {}):
   }
   const client = createClient(libsqlClientConfig(url, options.authToken))
   await client.executeMultiple(MIGRATION_SQL)
+  await ensureColumns(client)
   const db = drizzle(client, { schema })
   return { db, client, close: () => client.close() }
+}
+
+/**
+ * Apply additive column migrations to EXISTING tables (the CREATE statements cover
+ * fresh DBs). SQLite has no `ADD COLUMN IF NOT EXISTS`, so each column is added
+ * only when `PRAGMA table_info` shows it's missing — making this safe to run on
+ * every boot, on both fresh and upgraded databases.
+ */
+export async function ensureColumns(client: Client): Promise<void> {
+  for (const { table, column, type } of COLUMN_BACKFILL) {
+    const info = await client.execute(`PRAGMA table_info(${table})`)
+    const present = info.rows.some((row) => (row as { name?: unknown }).name === column)
+    if (!present) await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+  }
 }

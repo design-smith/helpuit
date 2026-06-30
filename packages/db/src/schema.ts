@@ -20,11 +20,15 @@ export const manifests = sqliteTable('helpuit_manifests', {
   updatedAt: integer('updated_at').notNull(),
 })
 
-/** Operator-ingested grounding docs (pasted/uploaded) that feed the L1 docs index. */
+/** Operator-ingested grounding docs (pasted/uploaded/imported) that feed the L1 docs index. */
 export const docs = sqliteTable('helpuit_docs', {
   id: text('id').primaryKey(),
   title: text('title'),
   text: text('text').notNull(),
+  /** Where the doc came from: 'upload' | 'gdrive' | 'dropbox' | 'sharepoint' | 'repo' (null on legacy rows). */
+  source: text('source'),
+  /** Stable per-source id (provider file id / filename) — the upsert key for re-import. */
+  externalId: text('external_id'),
   createdAt: integer('created_at').notNull(),
 })
 

@@ -3,6 +3,9 @@ import { investigationId } from '@helpuit/contracts'
 import { InvestigationNotFoundError } from '@helpuit/investigation-store'
 import { createDb, type DbHandle } from './client.js'
 import { DrizzleInvestigationRepository } from './investigation-repository.js'
+import { DrizzleTicketing } from './ticketing-repository.js'
+import { DrizzleGithubLinks } from './github-links-repository.js'
+import { DrizzleDraftRepository } from './draft-repository.js'
 
 let handle: DbHandle | undefined
 afterEach(() => handle?.close())
@@ -92,6 +95,37 @@ describe('DrizzleInvestigationRepository', () => {
 
       const bugs = await repo.list({ classification: 'new_bug' })
       expect(bugs.items.map((i) => i.id)).toEqual([a.id])
+    })
+  })
+
+  describe('listEnriched (console flags + filters)', () => {
+    it('flags tickets / open issues / pending drafts per row and filters by them', async () => {
+      handle = await createDb(':memory:')
+      const db = handle.db
+      const repo = new DrizzleInvestigationRepository(db, () => 1)
+      const tickets = new DrizzleTicketing(db)
+      const links = new DrizzleGithubLinks(db)
+      const drafts = new DrizzleDraftRepository(db)
+
+      const a = await repo.create({ conversationId: 1 }) // becomes a ticket
+      const b = await repo.create({ conversationId: 2 }) // has a pending draft
+      const c = await repo.create({ conversationId: 3 }) // has an open issue
+      const plain = await repo.create({ conversationId: 4 }) // nothing attached
+
+      await tickets.create({ investigationId: a.id, conversationId: 1 })
+      await drafts.save({ investigationId: b.id, conversationId: 2, title: 't', body: 'x', labels: ['l'], severity: 'medium' })
+      await links.link({ investigationId: c.id, issueNumber: 7, issueUrl: 'https://github.com/o/r/issues/7' }) // status null ⇒ open
+
+      const byId = Object.fromEntries((await repo.listEnriched({})).items.map((i) => [i.id, i]))
+      expect(byId[a.id]!.hasTicket).toBe(true)
+      expect(byId[a.id]!.pendingDraft).toBe(false)
+      expect(byId[b.id]!.pendingDraft).toBe(true)
+      expect(byId[c.id]!.hasOpenIssue).toBe(true)
+      expect(byId[plain.id]).toMatchObject({ hasTicket: false, hasOpenIssue: false, pendingDraft: false })
+
+      expect((await repo.listEnriched({ ticket: true })).items.map((i) => i.id)).toEqual([a.id])
+      expect((await repo.listEnriched({ pendingDraft: true })).items.map((i) => i.id)).toEqual([b.id])
+      expect((await repo.listEnriched({ openIssue: true })).items.map((i) => i.id)).toEqual([c.id])
     })
   })
 })

@@ -61,6 +61,37 @@ describe('HttpChatwootClient', () => {
     await expect(client.sendReply(1, 'x')).rejects.toThrow(/Chatwoot message failed/)
   })
 
+  it('fetches + normalizes the conversation transcript (GET messages)', async () => {
+    let seen: { method?: string; url?: string; token?: string | string[] } | undefined
+    server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      seen = { method: req.method, url: req.url, token: req.headers['api_access_token'] }
+      res.statusCode = 200
+      res.end(
+        JSON.stringify({
+          payload: [
+            { content: 'the export button is broken', message_type: 0, private: false, created_at: 1000 },
+            { content: 'looking into it now', message_type: 1, private: false, created_at: 1001 },
+            { content: 'internal: repro confirmed', message_type: 1, private: true, created_at: 1002 },
+            { content: '', message_type: 2, private: false, created_at: 1003 }, // empty/activity → dropped
+          ],
+        }),
+      )
+    })
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve))
+    const address = server!.address()
+    const port = typeof address === 'object' && address !== null ? address.port : 0
+    const client = new HttpChatwootClient({ baseUrl: `http://127.0.0.1:${port}`, accountId: 3, apiAccessToken: 'tok' })
+
+    const msgs = await client.getMessages(7)
+
+    expect(seen).toMatchObject({ method: 'GET', url: '/api/v1/accounts/3/conversations/7/messages', token: 'tok' })
+    expect(msgs).toEqual([
+      { author: 'customer', text: 'the export button is broken', at: 1_000_000 },
+      { author: 'agent', text: 'looking into it now', at: 1_001_000 },
+      { author: 'system', text: 'internal: repro confirmed', at: 1_002_000 },
+    ])
+  })
+
   it('retries a transient 502 and eventually posts the reply', async () => {
     let hits = 0
     const captured: string[] = []

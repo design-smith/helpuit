@@ -1,4 +1,4 @@
-import { DrizzleDocsRepository, type Db, type AddDocInput, type DocRecord } from '@helpuit/db'
+import { DrizzleDocsRepository, type Db, type AddDocInput, type DocRecord, type DocSource } from '@helpuit/db'
 import { InMemoryDocsIndex, type Doc, type DocsIndex } from '@helpuit/guidance'
 
 function toDoc(record: DocRecord): Doc {
@@ -48,17 +48,34 @@ export class DocsService {
     return record
   }
 
+  /**
+   * Import a doc from a source (upload / connected provider), keyed by
+   * (source, externalId): persists insert-or-replace AND updates the live index in
+   * place — so re-importing a changed file refreshes it immediately, with no
+   * duplicate and no restart.
+   */
+  async importDoc(input: { source: DocSource; externalId: string; title?: string; text: string }): Promise<DocRecord> {
+    const record = await this.repo.upsertBySource(input.source, input.externalId, {
+      title: input.title,
+      text: input.text,
+    })
+    this.docsIndex.upsert(toDoc(record))
+    return record
+  }
+
   /** All persisted docs, newest first (for the console's docs list). */
   list(): Promise<DocRecord[]> {
     return this.repo.list()
   }
 
   /**
-   * Remove a doc from the store. The live index keeps the in-memory copy until the
-   * next reload (its baseline is rebuilt from the store on the next start); the
-   * persistent source of truth — what survives a restart — is updated immediately.
+   * Remove a doc from the store AND the live index, so it stops grounding L1
+   * answers immediately — no restart. Returns false (and touches nothing) if the
+   * id wasn't present.
    */
-  remove(id: string): Promise<boolean> {
-    return this.repo.remove(id)
+  async remove(id: string): Promise<boolean> {
+    const removed = await this.repo.remove(id)
+    if (removed) this.docsIndex.removeById(id)
+    return removed
   }
 }

@@ -1,10 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import type { AddressInfo } from 'node:net'
+import { createServer, type Server } from 'node:http'
 import type { FastifyInstance } from 'fastify'
 import {
   createDb,
   DrizzleInvestigationRepository,
   DrizzleDraftRepository,
+  DrizzleGithubLinks,
+  DrizzleJobQueue,
+  DrizzleAuditRepository,
   type DbHandle,
 } from '@helpuit/db'
 import { buildAdminApi } from '@helpuit/composition'
@@ -13,9 +17,11 @@ import { buildServer } from './server.js'
 
 let app: FastifyInstance | undefined
 let handle: DbHandle | undefined
+let extraServer: Server | undefined
 afterEach(async () => {
   await app?.close()
   handle?.close()
+  extraServer?.close()
 })
 
 // buildAdminApi only reads github.*, security.encryptionKey, budget.perDay.
@@ -80,6 +86,143 @@ describe('admin API', () => {
 
     const viaCookie = await fetch(`${base}/admin/overview`, { headers: { cookie } })
     expect(viaCookie.status).toBe(200)
+  })
+
+  it('lists filed GitHub issues at /admin/issues (newest first, with total)', async () => {
+    handle = await createDb(':memory:')
+    const investigations = new DrizzleInvestigationRepository(handle.db)
+    const links = new DrizzleGithubLinks(handle.db)
+    const inv = await investigations.create({ conversationId: 9, customerId: 'u9' })
+    await links.link({ investigationId: inv.id, issueNumber: 42, issueUrl: 'https://github.com/o/r/issues/42' })
+
+    const api = buildAdminApi(config, { db: handle.db })
+    app = buildServer({ admin: { token: TOKEN, api } })
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
+
+    expect((await fetch(`${base}/admin/issues`)).status).toBe(401)
+    const res = await fetch(`${base}/admin/issues`, { headers: bearer })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { items: Array<{ issueNumber: number; issueUrl: string }>; total: number }
+    expect(body.total).toBe(1)
+    expect(body.items[0]?.issueNumber).toBe(42)
+    expect(body.items[0]?.issueUrl).toContain('/issues/42')
+  })
+
+  it('serves the live Chatwoot transcript for a conversation, and 404s an unknown one', async () => {
+    handle = await createDb(':memory:')
+    const investigations = new DrizzleInvestigationRepository(handle.db)
+    const inv = await investigations.create({ conversationId: 55, customerId: 'u' })
+
+    const chat = createServer((req, res) => {
+      res.setHeader('content-type', 'application/json')
+      if (req.url === '/api/v1/accounts/9/conversations/55/messages') {
+        res.end(
+          JSON.stringify({
+            payload: [
+              { content: 'help, the export is broken', message_type: 0, created_at: 1000 },
+              { content: 'on it', message_type: 1, created_at: 1001 },
+            ],
+          }),
+        )
+      } else {
+        res.statusCode = 404
+        res.end('{}')
+      }
+    })
+    await new Promise<void>((r) => chat.listen(0, '127.0.0.1', () => r()))
+    extraServer = chat
+    const chatUrl = `http://127.0.0.1:${(chat.address() as AddressInfo).port}`
+
+    const txConfig = {
+      ...config,
+      chatwoot: { baseUrl: chatUrl, accountId: 9, inboxId: 1, apiToken: 'cw' },
+    } as unknown as HelpuitConfig
+    const api = buildAdminApi(txConfig, { db: handle.db })
+    app = buildServer({ admin: { token: TOKEN, api } })
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
+
+    const res = await fetch(`${base}/admin/conversations/${inv.id}/transcript`, { headers: bearer })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { available: boolean; messages: Array<{ author: string; text: string }> }
+    expect(body.available).toBe(true)
+    expect(body.messages.map((m) => `${m.author}:${m.text}`)).toEqual(['customer:help, the export is broken', 'agent:on it'])
+
+    expect((await fetch(`${base}/admin/conversations/nope/transcript`, { headers: bearer })).status).toBe(404)
+  })
+
+  it('refreshes GitHub issue open/closed status from GitHub, and filters by it', async () => {
+    handle = await createDb(':memory:')
+    const investigations = new DrizzleInvestigationRepository(handle.db)
+    const links = new DrizzleGithubLinks(handle.db)
+    const inv = await investigations.create({ conversationId: 1, customerId: 'u' })
+    await links.link({ investigationId: inv.id, issueNumber: 42, issueUrl: 'https://gh/issues/42' })
+
+    const gh = createServer((_req, res) => {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ number: 42, state: 'closed' }))
+    })
+    await new Promise<void>((r) => gh.listen(0, '127.0.0.1', () => r()))
+    extraServer = gh
+    const ghUrl = `http://127.0.0.1:${(gh.address() as AddressInfo).port}`
+
+    const cfg = {
+      ...config,
+      github: { owner: 'o', repo: 'r', token: 't', productionBranch: 'main', apiBaseUrl: ghUrl },
+    } as unknown as HelpuitConfig
+    const api = buildAdminApi(cfg, { db: handle.db })
+    app = buildServer({ admin: { token: TOKEN, api } })
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
+
+    const refreshed = await fetch(`${base}/admin/issues/refresh`, { method: 'POST', headers: bearer })
+    expect(refreshed.status).toBe(200)
+    expect(((await refreshed.json()) as { synced: number }).synced).toBe(1)
+
+    const closed = (await (await fetch(`${base}/admin/issues?status=closed`, { headers: bearer })).json()) as {
+      items: Array<{ issueNumber: number; status: string }>
+      total: number
+    }
+    expect(closed.total).toBe(1)
+    expect(closed.items[0]?.status).toBe('closed')
+
+    const open = (await (await fetch(`${base}/admin/issues?status=open`, { headers: bearer })).json()) as { total: number }
+    expect(open.total).toBe(0)
+  })
+
+  it('expands a job into its conversation step trail at /admin/jobs/:id/logs', async () => {
+    handle = await createDb(':memory:')
+    const investigations = new DrizzleInvestigationRepository(handle.db)
+    const audit = new DrizzleAuditRepository(handle.db)
+    const queue = new DrizzleJobQueue(handle.db)
+
+    const inv = await investigations.create({ conversationId: 77, customerId: 'u' })
+    await audit.record({ investigationId: inv.id, type: 'created', at: 1000 })
+    await audit.record({ investigationId: inv.id, type: 'guidance', data: { decision: 'resolved' }, at: 1001 })
+    // a job whose stored payload carries the conversation it processed
+    const jobId = await queue.enqueue({
+      type: 'investigation',
+      payload: { payload: { conversation: { id: 77 } }, context: {} },
+    })
+
+    const api = buildAdminApi(config, { db: handle.db })
+    app = buildServer({ admin: { token: TOKEN, api } })
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`
+
+    const res = await fetch(`${base}/admin/jobs/${jobId}/logs`, { headers: bearer })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      conversationId: number
+      investigationId: string
+      entries: Array<{ type: string }>
+    }
+    expect(body.conversationId).toBe(77)
+    expect(body.investigationId).toBe(inv.id)
+    expect(body.entries.map((e) => e.type)).toEqual(['created', 'guidance'])
+
+    expect((await fetch(`${base}/admin/jobs/nope/logs`, { headers: bearer })).status).toBe(404)
   })
 
   it('lists investigations and returns 404 for an unknown one', async () => {

@@ -60,6 +60,12 @@ export class DrizzleJobQueue implements JobQueue {
     return id
   }
 
+  /** Read one job by id, including its payload (for the console's per-job log view). */
+  async get(id: string): Promise<Job | null> {
+    const rows = await this.db.select().from(jobs).where(eq(jobs.id, id))
+    return rows[0] !== undefined ? toJob(rows[0]) : null
+  }
+
   async claim(now: number): Promise<Job | null> {
     for (let i = 0; i < MAX_CLAIM_RETRIES; i++) {
       const candidates = await this.db

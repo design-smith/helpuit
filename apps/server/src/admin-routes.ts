@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { AdminApi } from '@helpuit/composition'
+import type { DocSource } from '@helpuit/db'
 import { RateLimiter } from '@helpuit/budget'
 import type { ActivityBus } from './activity.js'
+
+/** Doc sources accepted from the console (repo docs are ephemeral, never posted). */
+const DOC_SOURCES: readonly string[] = ['upload', 'gdrive', 'dropbox', 'sharepoint']
 import {
   constantTimeEqual,
   verifyBearer,
@@ -124,6 +128,10 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
         classification: typeof q.classification === 'string' ? (q.classification as never) : undefined,
         conversationId: intParam(q.conversationId),
         customerId: typeof q.customerId === 'string' ? q.customerId : undefined,
+        // Conversations-page relation filters (became a ticket / has open issue / needs draft review).
+        ticket: q.ticket === 'true' ? true : undefined,
+        openIssue: q.openIssue === 'true' ? true : undefined,
+        pendingDraft: q.pendingDraft === 'true' ? true : undefined,
       }
       return api.listInvestigations(filter, listOptions(q))
     }),
@@ -138,6 +146,19 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
         return { status: 'not_found' }
       }
       return detail
+    }),
+  )
+
+  // Live conversation transcript (fetched from Chatwoot on demand) — keyed by investigation id.
+  app.get(
+    '/admin/conversations/:id/transcript',
+    guard(async (request, reply) => {
+      const result = await api.conversationTranscript(paramId(request))
+      if (result === null) {
+        reply.code(404)
+        return { status: 'not_found' }
+      }
+      return result
     }),
   )
 
@@ -185,6 +206,17 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
       return api.listTickets(filter, listOptions(q))
     }),
   )
+
+  // ---- issues (filed GitHub issue links) ----
+  app.get(
+    '/admin/issues',
+    guard((request) => {
+      const q = request.query as Record<string, unknown>
+      const status = q.status === 'open' || q.status === 'closed' ? q.status : undefined
+      return api.listIssues(listOptions(q), { status })
+    }),
+  )
+  app.post('/admin/issues/refresh', guard(() => api.refreshIssues()))
 
   // ---- drafts (approval queue) ----
   app.get(
@@ -284,6 +316,17 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
     }),
   )
 
+  app.get(
+    '/admin/jobs/:id/logs',
+    guard(async (request, reply) => {
+      const logs = await api.jobLogs(paramId(request))
+      if (logs === null) {
+        reply.code(404)
+        return { status: 'not_found' }
+      }
+      return logs
+    }),
+  )
   app.post('/admin/jobs/:id/retry', guard((request) => api.retryJob(paramId(request))))
 
   app.post(
@@ -369,6 +412,61 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
     return reply.redirect('/connections?github=connected')
   })
 
+  // ---- connect Supabase (OAuth, for L2 account data) ----
+  const supabase = api.supabaseConnect
+  app.get(
+    '/admin/connect/supabase/manifest',
+    guard(async () => {
+      const state = signSession(token, now() + SESSION_TTL_MS)
+      return { url: await supabase.authorizeUrl(state), state }
+    }),
+  )
+  // Cross-site redirect from Supabase — state-gated, not cookie-gated.
+  app.get('/admin/connect/supabase/callback', async (request, reply) => {
+    const q = request.query as Record<string, unknown>
+    if (typeof q.state !== 'string' || !verifySession(q.state, token, now())) {
+      reply.code(401)
+      return { status: 'unauthorized' }
+    }
+    if (typeof q.code !== 'string') {
+      reply.code(400)
+      return { status: 'invalid', message: 'missing code' }
+    }
+    await supabase.completeCallback(q.code)
+    return reply.redirect('/settings/connections?supabase=connected')
+  })
+  app.get('/admin/connect/supabase/projects', guard(() => supabase.listProjects()))
+  app.get(
+    '/admin/connect/supabase/tables',
+    guard((request) => supabase.listTables(String((request.query as Record<string, unknown>).ref ?? ''))),
+  )
+  app.get(
+    '/admin/connect/supabase/columns',
+    guard((request) => {
+      const q = request.query as Record<string, unknown>
+      return supabase.listColumns(String(q.ref ?? ''), String(q.table ?? ''))
+    }),
+  )
+  app.post(
+    '/admin/connect/supabase/select',
+    guard(async (request, reply) => {
+      const b = request.body as { ref?: string; table?: string; userColumn?: string; columns?: string[] } | undefined
+      if (
+        b?.ref === undefined ||
+        b.table === undefined ||
+        b.userColumn === undefined ||
+        !Array.isArray(b.columns) ||
+        b.columns.length === 0
+      ) {
+        reply.code(400)
+        return { status: 'invalid', message: 'ref, table, userColumn, columns[] required' }
+      }
+      const result = await supabase.selectProject({ ref: b.ref, table: b.table, userColumn: b.userColumn, columns: b.columns })
+      if (!result.ok) reply.code(400)
+      return result
+    }),
+  )
+
   // ---- setup readiness (blockers/warnings/ready), only when a supervisor is wired ----
   const readiness = api.readiness
   if (readiness !== undefined) {
@@ -387,6 +485,19 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
   const testGitHub = api.testGitHub
   if (testGitHub !== undefined) {
     app.post('/admin/test/github', guard(() => testGitHub()))
+  }
+
+  // ---- connections: disconnect an integration (clear creds + reset; restart-class) ----
+  const disconnectConnection = api.disconnectConnection
+  if (disconnectConnection !== undefined) {
+    app.post(
+      '/admin/connections/:id/disconnect',
+      guard(async (request, reply) => {
+        const result = await disconnectConnection((request.params as { id: string }).id)
+        if (!result.ok) reply.code(400)
+        return result
+      }),
+    )
   }
 
   // ---- customer-token hand-off: set the verified token on a Chatwoot conversation ----
@@ -487,14 +598,18 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
     app.post(
       '/admin/docs',
       guard(async (request, reply) => {
-        const body = request.body as { title?: unknown; text?: unknown } | undefined
+        const body = request.body as { title?: unknown; text?: unknown; source?: unknown; externalId?: unknown } | undefined
         const text = body?.text
         if (typeof text !== 'string' || text.trim() === '') {
           reply.code(400)
           return { status: 'invalid', message: 'text (non-empty string) required' }
         }
         const title = typeof body?.title === 'string' && body.title !== '' ? body.title : undefined
-        return docs.add({ title, text })
+        const source = DOC_SOURCES.includes(body?.source as string) ? (body!.source as DocSource) : 'upload'
+        const externalId = typeof body?.externalId === 'string' && body.externalId !== '' ? body.externalId : undefined
+        // A stable externalId means "this is the same file" → upsert (refresh in place);
+        // otherwise it's a one-off paste/upload → insert.
+        return externalId !== undefined ? docs.importDoc({ source, externalId, title, text }) : docs.add({ title, text, source })
       }),
     )
 

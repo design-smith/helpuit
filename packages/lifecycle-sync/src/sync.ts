@@ -65,6 +65,9 @@ export interface LifecycleSyncDeps {
   ticketing: { ticketsForIssue(issueNumber: number): Promise<Ticket[]> }
   client: ChatwootClient
   mode: ResolutionMode
+  /** Console issue list: keep the stored open/closed status current as GitHub events arrive. */
+  githubLinks?: { updateStatus(issueNumber: number, status: string, syncedAt: number): Promise<void> }
+  now?: () => number
 }
 
 export interface SyncOutcome {
@@ -87,6 +90,13 @@ export class LifecycleSync {
 
   async handleEvent(event: GitHubIssueEvent): Promise<SyncOutcome> {
     const change = nextTicketState(event)
+
+    // Keep the console's stored issue status current (reopened is caught by the manual Refresh).
+    if (this.deps.githubLinks !== undefined && (event.type === 'closed' || event.type === 'opened')) {
+      const now = this.deps.now ?? (() => Date.now())
+      await this.deps.githubLinks.updateStatus(event.issueNumber, event.type === 'closed' ? 'closed' : 'open', now())
+    }
+
     const tickets = await this.deps.ticketing.ticketsForIssue(event.issueNumber)
 
     for (const ticket of tickets) {

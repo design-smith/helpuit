@@ -257,6 +257,9 @@ async function main(): Promise<void> {
         limit: config.budget.rateLimit.max,
         windowMs: config.budget.rateLimit.windowMs,
       }),
+      // Live console toggle: when Chatwoot is paused, the webhook is acknowledged
+      // but never enqueued (read from the supervisor's live config, no restart).
+      enabled: () => supervisor.currentConfig().integrations.chatwoot,
     },
     github: {
       handle: buildGitHubWebhookHandler(config, { db: handle.db }),

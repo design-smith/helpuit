@@ -1,5 +1,5 @@
 import type { HelpuitConfig } from '@helpuit/config'
-import { DrizzleTicketing, type Db } from '@helpuit/db'
+import { DrizzleTicketing, DrizzleGithubLinks, type Db } from '@helpuit/db'
 import { HttpChatwootClient } from '@helpuit/chatwoot'
 import { LifecycleSync, parseGitHubEvent } from '@helpuit/lifecycle-sync'
 
@@ -25,6 +25,7 @@ export function buildGitHubWebhookHandler(
       apiAccessToken: config.chatwoot.apiToken,
     }),
     mode: config.policy.resolutionMode,
+    githubLinks: new DrizzleGithubLinks(deps.db),
   })
 
   return async (payload: unknown) => {

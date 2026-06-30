@@ -1,0 +1,215 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Helpuit design system — neobrutalism (light · blue).
+ * Ported verbatim from the operator console (apps/web): thick black borders,
+ * hard offset shadows, bold flat fills, chunky type, press-to-translate hover.
+ * Tokens mirror apps/web/src/index.css; the Tailwind-v3 config mapping
+ * (apps/web/tailwind.config.js) is re-expressed here as Tailwind-v4 @theme.
+ */
+:root {
+  --border-radius: 5px;
+  --box-shadow-x: 4px;
+  --box-shadow-y: 4px;
+  --reverse-box-shadow-x: -4px;
+  --reverse-box-shadow-y: -4px;
+  --heading-font-weight: 700;
+  --base-font-weight: 500;
+
+  --background: oklch(93.46% 0.0304 254.32);
+  --secondary-background: oklch(100% 0 0);
+  --foreground: oklch(0% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: oklch(67.47% 0.1725 259.61);
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+  --overlay: oklch(0% 0 0 / 0.8);
+  --shadow: var(--box-shadow-x) var(--box-shadow-y) 0px 0px var(--border);
+
+  --chart-1: oklch(67.47% 0.1726 259.49);
+  --chart-2: oklch(67.28% 0.2147 24.22);
+  --chart-3: oklch(86.03% 0.176 92.36);
+  --chart-4: oklch(79.76% 0.2044 153.08);
+  --chart-5: oklch(66.34% 0.1806 277.2);
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Neobrutalism color tokens (used by the vendored ui/* + the site barrel). */
+  --color-main: var(--main);
+  --color-main-foreground: var(--main-foreground);
+  --color-background: var(--background);
+  --color-secondary-background: var(--secondary-background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-overlay: var(--overlay);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Legacy console token names, remapped onto the neobrutalism palette. */
+  --color-canvas: var(--background);
+  --color-surface: var(--secondary-background);
+  --color-surface-2: #e6e6e6;
+  --color-ink: var(--foreground);
+  --color-muted: #5c5c5c;
+  --color-accent: var(--main);
+  --color-accent-soft: #b8ccf2;
+
+  /* Keep the shadcn token names alive (recolored) so any vendored component
+     that still references them renders sensibly rather than breaking. */
+  --color-card: var(--secondary-background);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--secondary-background);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--main);
+  --color-primary-foreground: var(--main-foreground);
+  --color-secondary: var(--secondary-background);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted-foreground: #5c5c5c;
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: oklch(63.7% 0.237 25.331);
+  --color-input: var(--border);
+
+  --radius-base: var(--border-radius);
+  --radius-sm: calc(var(--border-radius) - 2px);
+  --radius-md: var(--border-radius);
+  --radius-lg: calc(var(--border-radius) + 4px);
+  --radius-xl: calc(var(--border-radius) + 8px);
+
+  --shadow-shadow: var(--shadow);
+  --shadow-nav: 4px 4px 0px 0px var(--border);
+
+  /* Spacing tokens driving the signature press: hover:translate-x-boxShadowX … */
+  --spacing-boxShadowX: var(--box-shadow-x);
+  --spacing-boxShadowY: var(--box-shadow-y);
+  --spacing-reverseBoxShadowX: var(--reverse-box-shadow-x);
+  --spacing-reverseBoxShadowY: var(--reverse-box-shadow-y);
+
+  --font-weight-base: var(--base-font-weight);
+  --font-weight-heading: var(--heading-font-weight);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-marquee-reverse: marquee-reverse 30s linear infinite;
+  --animate-blink: blink 1.05s step-end infinite;
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes marquee-reverse {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-weight: var(--base-font-weight);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--heading-font-weight);
+  }
+}
+
+@layer components {
+  /* Neobrutalism: thick black border + hard offset shadow + small radius. */
+  .card {
+    @apply rounded-base border-2 border-border bg-secondary-background shadow-shadow;
+  }
+  /* Grouped base (v4 won't @apply one component class from another, so the
+     shared utilities are applied to all four selectors at once). */
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-base border-2 border-border px-4 py-2 text-sm font-base transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-main text-main-foreground shadow-shadow;
+  }
+  .btn-ghost {
+    @apply bg-secondary-background text-foreground shadow-shadow;
+  }
+  .btn-danger {
+    @apply bg-red-400 text-foreground shadow-shadow;
+  }
+  /* The signature press: on hover the element slides into its shadow, which
+     drops. Raw CSS so it never depends on theme-generated translate utilities. */
+  .btn-primary:hover,
+  .btn-ghost:hover,
+  .btn-danger:hover {
+    transform: translate(var(--box-shadow-x), var(--box-shadow-y));
+    box-shadow: none;
+  }
+  /* Compact modifier — defined after .btn so its padding wins. */
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+  .input {
+    @apply w-full rounded-base border-2 border-border bg-secondary-background px-3 py-2 text-sm font-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2;
+  }
+  .th {
+    @apply px-3 py-2 text-left text-xs font-heading uppercase tracking-wide text-foreground;
+  }
+  .td {
+    @apply px-3 py-2 text-sm;
+  }
+}
+
+/* Neobrutalism background textures — faint grid / dots for section life. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.bg-dots {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.11) 1.4px, transparent 1.4px);
+  background-size: 22px 22px;
+}
+
+/* Accessibility: collapse all motion when the user asks for less of it.
+   (framer-motion is gated separately in JS via useReducedMotion.) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

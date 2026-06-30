@@ -23,6 +23,22 @@ export interface Investigation {
   confidence: number | null
   createdAt: number
   updatedAt: number
+  /** Console list flags (present on /admin/investigations; drive the Conversations filters/badges). */
+  hasTicket?: boolean
+  hasOpenIssue?: boolean
+  pendingDraft?: boolean
+}
+
+/** One message in a live conversation transcript (from Chatwoot). */
+export interface TranscriptMessage {
+  author: 'customer' | 'agent' | 'system'
+  text: string
+  at: number
+}
+export interface ConversationTranscript {
+  available: boolean
+  messages?: TranscriptMessage[]
+  detail?: string
 }
 
 export interface Overview {
@@ -111,11 +127,30 @@ export interface JobSummary {
   updatedAt: number
 }
 
+/** A job's resolved logs — the agent's step trail for the conversation it processed. */
+export interface JobLogs {
+  jobId: string
+  conversationId: number | null
+  investigationId: string | null
+  lastError: string | null
+  entries: AuditEntry[]
+}
+
 export interface PausedConversation {
   conversationId: number
   paused: boolean
   note: string | null
   updatedAt: number
+}
+
+/** A persisted grounding doc (feeds the L1 docs index), as the console lists it. */
+export interface DocRecord {
+  id: string
+  title: string | null
+  text: string
+  source: string | null
+  externalId: string | null
+  createdAt: number
 }
 
 // ---- fetch client + auth handling ----
@@ -169,10 +204,14 @@ export const keys = {
   audit: (id: string) => ['investigation', id, 'audit'] as const,
   evidence: (id: string) => ['investigation', id, 'evidence'] as const,
   spend: (id: string) => ['investigation', id, 'spend'] as const,
+  transcript: (id: string) => ['investigation', id, 'transcript'] as const,
   tickets: (f: object) => ['tickets', f] as const,
+  issues: (f: object) => ['issues', f] as const,
+  jobLogs: (id: string) => ['jobs', id, 'logs'] as const,
   drafts: (status: string) => ['drafts', status] as const,
   jobs: (f: object) => ['jobs', f] as const,
   paused: ['paused'] as const,
+  docs: ['docs'] as const,
 }
 
 // ---- queries ----
@@ -182,6 +221,10 @@ export const useOverview = () =>
 export interface InvestigationFilter {
   status?: string
   classification?: string
+  /** Conversations-page relation filters (sent only when true). */
+  ticket?: boolean
+  openIssue?: boolean
+  pendingDraft?: boolean
   limit?: number
   offset?: number
 }
@@ -193,6 +236,12 @@ export const useInvestigations = (filter: InvestigationFilter) =>
 
 export const useInvestigation = (id: string) =>
   useQuery({ queryKey: keys.investigation(id), queryFn: () => api<InvestigationDetail>(`/admin/investigations/${id}`) })
+
+export const useTranscript = (id: string) =>
+  useQuery({
+    queryKey: keys.transcript(id),
+    queryFn: () => api<ConversationTranscript>(`/admin/conversations/${id}/transcript`),
+  })
 
 export const useAudit = (id: string) =>
   useQuery({
@@ -215,11 +264,31 @@ export const useSpend = (id: string) =>
 export const useTickets = (filter: { investigationId?: string; limit?: number; offset?: number }) =>
   useQuery({ queryKey: keys.tickets(filter), queryFn: () => api<Page<Ticket>>(`/admin/tickets${qs(filter)}`) })
 
+export const useIssues = (filter: { status?: 'open' | 'closed'; limit?: number; offset?: number }) =>
+  useQuery({
+    queryKey: keys.issues(filter),
+    queryFn: () => api<Page<GithubLink>>(`/admin/issues${qs(filter)}`),
+    refetchInterval: 30_000, // keep open/closed reasonably fresh
+  })
+
+/** Re-pull current open/closed state from GitHub, then refresh the list. */
+export function useRefreshIssues() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiSoft<{ synced: number }>('/admin/issues/refresh', { method: 'POST' }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['issues'] }),
+  })
+}
+
 export const useDrafts = (status: 'pending' | 'published' | 'rejected') =>
   useQuery({ queryKey: keys.drafts(status), queryFn: () => api<Page<Draft>>(`/admin/drafts${qs({ status })}`) })
 
 export const useJobs = (filter: { status?: string; limit?: number }) =>
   useQuery({ queryKey: keys.jobs(filter), queryFn: () => api<Page<JobSummary>>(`/admin/jobs${qs(filter)}`) })
+
+/** A job's agent step-trail — fetched lazily (only when its row is expanded). */
+export const useJobLogs = (id: string, enabled: boolean) =>
+  useQuery({ queryKey: keys.jobLogs(id), queryFn: () => api<JobLogs>(`/admin/jobs/${id}/logs`), enabled })
 
 export const usePaused = () =>
   useQuery({
@@ -360,6 +429,33 @@ export function useDeleteSecret() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (key: string) => api(`/admin/config/secret/${key}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['config'] })
+      void qc.invalidateQueries({ queryKey: ['restart-status'] })
+    },
+  })
+}
+
+/**
+ * Live on/off toggle for the integrations enable-map. Sends the FULL map — the
+ * section is replaced wholesale on the server, so a partial send would reset the
+ * others to their defaults. Applies live (no restart).
+ */
+export function useToggleIntegration() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (next: Record<string, boolean>) =>
+      apiSoft<ApplyResult>('/admin/config/section/integrations', { method: 'PUT', body: JSON.stringify(next) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['config'] }),
+  })
+}
+
+/** Disconnect an integration: clears its secrets (+ resets GitHub App metadata). Restart-class. */
+export function useDisconnectConnection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiSoft<{ ok: boolean; detail: string }>(`/admin/connections/${id}/disconnect`, { method: 'POST' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['config'] })
       void qc.invalidateQueries({ queryKey: ['restart-status'] })
@@ -578,6 +674,90 @@ export function useGithubConnect() {
       document.body.appendChild(form)
       form.submit()
     },
+  })
+}
+
+// ---- Supabase connect (L2 account data) ----
+
+export interface SupabaseProject {
+  ref: string
+  name: string
+  organizationId: string
+  region?: string
+}
+
+/** Start the Supabase OAuth flow — redirect to the authorize URL (state embedded). */
+export function useSupabaseConnect() {
+  return useMutation({
+    mutationFn: async () => {
+      const { url } = await api<{ url: string; state: string }>('/admin/connect/supabase/manifest')
+      window.location.assign(url)
+    },
+  })
+}
+
+export const useSupabaseProjects = (enabled: boolean) =>
+  useQuery({
+    queryKey: ['supabase', 'projects'],
+    queryFn: () => api<SupabaseProject[]>('/admin/connect/supabase/projects'),
+    enabled,
+  })
+
+export const useSupabaseTables = (ref: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['supabase', 'tables', ref],
+    queryFn: () => api<string[]>(`/admin/connect/supabase/tables${qs({ ref })}`),
+    enabled: enabled && ref !== '',
+  })
+
+export const useSupabaseColumns = (ref: string, table: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['supabase', 'columns', ref, table],
+    queryFn: () => api<string[]>(`/admin/connect/supabase/columns${qs({ ref, table })}`),
+    enabled: enabled && ref !== '' && table !== '',
+  })
+
+export function useSelectSupabaseProject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { ref: string; table: string; userColumn: string; columns: string[] }) =>
+      apiSoft<{ ok: boolean; detail: string }>('/admin/connect/supabase/select', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['config'] })
+      void qc.invalidateQueries({ queryKey: ['restart-status'] })
+    },
+  })
+}
+
+// ---- grounding docs (operator-managed L1 knowledge, FCW-04) ----
+
+/** All persisted grounding docs, newest first. */
+export const useDocs = () =>
+  useQuery({ queryKey: keys.docs, queryFn: () => api<{ items: DocRecord[] }>('/admin/docs').then((r) => r.items) })
+
+/**
+ * Ingest a doc via the admin endpoint. A stable `externalId` (e.g. the filename)
+ * makes a re-import refresh the doc in place rather than duplicate it. Applies
+ * live — no restart — so a fresh upload grounds answers immediately.
+ */
+export function useImportDoc() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { title?: string; text: string; source?: string; externalId?: string }) =>
+      api<DocRecord>('/admin/docs', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.docs }),
+  })
+}
+
+/** Delete a grounding doc. Removes it from the store and the live index at once (no restart). */
+export function useDeleteDoc() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<{ status: string }>(`/admin/docs/${id}`, { method: 'DELETE' }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.docs }),
   })
 }
 

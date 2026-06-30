@@ -1,153 +1,182 @@
-import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
-import { keys, useActivityStream, useOverview, type ActivityEvent } from '../../lib/api'
-import { Badge, Card, CenteredSpinner, ErrorState, PageHeader, ProgressBar, PulseDot, Row, StatCard, Table } from '../../components/ui'
-import { absTime, shortId, timeAgo, tokens, toneFor } from '../../lib/format'
+import type { UseQueryResult } from '@tanstack/react-query'
+import { useInvestigations, useTickets, useIssues, type Page } from '../../lib/api'
+import {
+  Badge,
+  CenteredSpinner,
+  EmptyState,
+  ErrorState,
+  LinkButton,
+  PageHeader,
+  Row,
+  Section,
+  StatCard,
+  Table,
+} from '../../components/ui'
+import { absTime, shortId, timeAgo, toneFor } from '../../lib/format'
 import { GettingStarted } from '../setup/GettingStarted'
 
-function LiveFeed() {
-  const [events, setEvents] = useState<Array<ActivityEvent & { seq: number }>>([])
-  const qc = useQueryClient()
-  useActivityStream((event) => {
-    setEvents((prev) => [{ ...event, seq: (prev[0]?.seq ?? 0) + 1 }, ...prev].slice(0, 12))
-    // a real-time event means the numbers changed — refresh the overview now
-    void qc.invalidateQueries({ queryKey: keys.overview })
-  })
-
-  return (
-    <Card className="p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <PulseDot />
-        <span className="text-xs uppercase tracking-wide text-muted">Live activity</span>
-      </div>
-      {events.length === 0 ? (
-        <p className="text-sm text-muted">Waiting for activity… (incoming messages and outcomes appear here in real time)</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {events.map((e) => (
-            <li key={e.seq} className="flex items-center gap-2 text-sm">
-              <Badge tone={e.type === 'received' ? 'sky' : toneFor(e.data?.outcome)}>
-                {e.type === 'received' ? 'message in' : (e.data?.outcome ?? 'outcome')}
-              </Badge>
-              {e.data?.conversationId !== undefined && (
-                <span className="text-muted">conversation #{e.data.conversationId}</span>
-              )}
-              <span className="ml-auto text-xs text-muted">{timeAgo(e.at)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  )
-}
-
-function Breakdown({ title, data }: { title: string; data: Record<string, number> }) {
-  const entries = Object.entries(data)
-  const total = entries.reduce((s, [, n]) => s + n, 0)
-  return (
-    <Card>
-      <div className="mb-3 text-xs uppercase tracking-wide text-muted">{title}</div>
-      {entries.length === 0 ? (
-        <p className="text-sm text-muted">No data yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {entries.map(([key, n]) => (
-            <div key={key} className="flex items-center gap-3">
-              <span className="w-40 shrink-0 text-sm">
-                <Badge tone={toneFor(key)}>{key}</Badge>
-              </span>
-              <ProgressBar value={total ? n / total : 0} className="flex-1" />
-              <span className="w-8 text-right text-sm tabular-nums text-muted">{n}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  )
-}
+const RECENT = 5
 
 export function DashboardPage() {
+  const conversations = useInvestigations({ limit: RECENT })
+  const tickets = useTickets({ limit: RECENT })
+  const issues = useIssues({ limit: RECENT })
+
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle="Live operational overview · refreshes every 12s" />
-      {/* Onboarding guidance renders independently of the (network-bound) overview below. */}
+      <PageHeader title="Dashboard" subtitle="Conversations, tickets, and issues at a glance" />
       <GettingStarted />
-      <DashboardOverview />
+
+      {/* The three numbers that matter. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Conversations" value={count(conversations)} />
+        <StatCard label="Tickets" value={count(tickets)} />
+        <StatCard label="Issues" value={count(issues)} />
+      </div>
+
+      {/* Most-recent of each, each with a "View all" into its full list. */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <RecentSection title="Recent conversations" to="/conversations" emptyHint="Conversations appear here as they come in." query={conversations}>
+          {(items) => (
+            <Table
+              head={
+                <>
+                  <th className="th">Conversation</th>
+                  <th className="th">Status</th>
+                  <th className="th">Classification</th>
+                  <th className="th">Started</th>
+                </>
+              }
+            >
+              {items.map((inv) => (
+                <Row key={inv.id}>
+                  <td className="td font-mono">
+                    <Link className="text-accent hover:underline" to={`/conversations/${inv.id}`}>
+                      #{inv.conversationId}
+                    </Link>
+                  </td>
+                  <td className="td">
+                    <Badge tone={toneFor(inv.status)}>{inv.status}</Badge>
+                  </td>
+                  <td className="td">
+                    {inv.classification ? <Badge tone={toneFor(inv.classification)}>{inv.classification}</Badge> : '—'}
+                  </td>
+                  <td className="td text-muted" title={absTime(inv.createdAt)}>
+                    {timeAgo(inv.createdAt)}
+                  </td>
+                </Row>
+              ))}
+            </Table>
+          )}
+        </RecentSection>
+
+        <RecentSection title="Recent tickets" to="/conversations?filter=ticket" emptyHint="Tickets are created when an investigation escalates." query={tickets}>
+          {(items) => (
+            <Table
+              head={
+                <>
+                  <th className="th">Ticket</th>
+                  <th className="th">Conversation</th>
+                  <th className="th">GitHub issue</th>
+                </>
+              }
+            >
+              {items.map((t) => (
+                <Row key={t.id}>
+                  <td className="td font-mono text-muted">{shortId(t.id)}</td>
+                  <td className="td tabular-nums text-muted">#{t.conversationId}</td>
+                  <td className="td">
+                    {t.issueNumber !== null ? (
+                      <Badge tone="emerald">#{t.issueNumber}</Badge>
+                    ) : (
+                      <span className="text-muted">unlinked</span>
+                    )}
+                  </td>
+                </Row>
+              ))}
+            </Table>
+          )}
+        </RecentSection>
+      </div>
+
+      <div className="mt-6">
+        <RecentSection title="Recent issues" to="/issues" emptyHint="GitHub issues are filed when a bug is confirmed." query={issues}>
+          {(items) => (
+            <Table
+              head={
+                <>
+                  <th className="th">Issue</th>
+                  <th className="th">Status</th>
+                  <th className="th">Investigation</th>
+                  <th className="th">Filed</th>
+                </>
+              }
+            >
+              {items.map((i) => (
+                <Row key={i.id}>
+                  <td className="td">
+                    <a className="text-accent hover:underline" href={i.issueUrl} target="_blank" rel="noreferrer">
+                      #{i.issueNumber}
+                    </a>
+                  </td>
+                  <td className="td">{i.status ? <Badge tone={toneFor(i.status)}>{i.status}</Badge> : <span className="text-muted">—</span>}</td>
+                  <td className="td font-mono">
+                    <Link className="text-accent hover:underline" to={`/conversations/${i.investigationId}`}>
+                      {shortId(i.investigationId)}
+                    </Link>
+                  </td>
+                  <td className="td text-muted" title={absTime(i.createdAt)}>
+                    {timeAgo(i.createdAt)}
+                  </td>
+                </Row>
+              ))}
+            </Table>
+          )}
+        </RecentSection>
+      </div>
     </div>
   )
 }
 
-function DashboardOverview() {
-  const { data, isPending, isError, error, refetch } = useOverview()
+/** The big number for a stat card — the list's full total, or a dash until it loads. */
+function count<T>(query: UseQueryResult<Page<T>>): ReactNode {
+  return query.data ? query.data.total : '—'
+}
 
-  if (isPending) return <CenteredSpinner />
-  if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />
-
-  const reproPct = Math.round(data.reproduction.successRate * 100)
-
+/** A titled card holding a short recent list with a "View all" link to the full page. */
+function RecentSection<T>({
+  title,
+  to,
+  emptyHint,
+  query,
+  children,
+}: {
+  title: string
+  to: string
+  emptyHint: string
+  query: UseQueryResult<Page<T>>
+  children: (items: T[]) => ReactNode
+}) {
   return (
-    <>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Investigations" value={data.investigations.total} />
-        <StatCard label="Issues linked" value={data.escalations.issuesLinked} />
-        <StatCard label="Tokens spent" value={tokens(data.spend.totalTokens)} />
-        <StatCard label="Repro success" value={`${reproPct}%`} hint={`${data.reproduction.attempts} attempts`} />
-        <StatCard label="Paused convos" value={data.control.pausedConversations} />
-        <StatCard
-          label="Queue"
-          value={data.queue.pending + data.queue.active}
-          hint={`${data.queue.failed} failed · ${data.queue.done} done`}
-        />
-      </div>
-
-      <div className="mt-4">
-        <LiveFeed />
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Breakdown title="By status" data={data.investigations.byStatus} />
-        <Breakdown title="By classification" data={data.investigations.byClassification} />
-      </div>
-
-      <div className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Recent investigations</h2>
-        {data.investigations.recent.length === 0 ? (
-          <div className="card p-6 text-sm text-muted">No investigations yet.</div>
-        ) : (
-          <Table
-            head={
-              <>
-                <th className="th">ID</th>
-                <th className="th">Status</th>
-                <th className="th">Level</th>
-                <th className="th">Classification</th>
-                <th className="th">Created</th>
-              </>
-            }
-          >
-            {data.investigations.recent.map((inv) => (
-              <Row key={inv.id}>
-                <td className="td font-mono">
-                  <Link className="text-accent hover:underline" to={`/investigations/${inv.id}`}>
-                    {shortId(inv.id)}
-                  </Link>
-                </td>
-                <td className="td">
-                  <Badge tone={toneFor(inv.status)}>{inv.status}</Badge>
-                </td>
-                <td className="td text-muted">{inv.level}</td>
-                <td className="td">
-                  {inv.classification ? <Badge tone={toneFor(inv.classification)}>{inv.classification}</Badge> : '—'}
-                </td>
-                <td className="td text-muted" title={absTime(inv.createdAt)}>
-                  {timeAgo(inv.createdAt)}
-                </td>
-              </Row>
-            ))}
-          </Table>
-        )}
-      </div>
-    </>
+    <Section
+      title={title}
+      actions={
+        <LinkButton to={to} size="sm">
+          View all
+        </LinkButton>
+      }
+    >
+      {query.isError ? (
+        <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+      ) : !query.data ? (
+        <CenteredSpinner />
+      ) : query.data.items.length === 0 ? (
+        <EmptyState title="Nothing yet" hint={emptyHint} />
+      ) : (
+        children(query.data.items)
+      )}
+    </Section>
   )
 }

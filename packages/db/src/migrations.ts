@@ -1,7 +1,10 @@
 /**
  * Schema DDL applied at startup. Idempotent (CREATE TABLE IF NOT EXISTS) so it
  * doubles as a migration for a fresh DB and a no-op for an existing one. Mirrors
- * `schema.ts`. (When Postgres lands, a dialect-specific variant is generated.)
+ * `schema.ts`. Columns ADDED to a table after its first release also need an entry
+ * in {@link COLUMN_BACKFILL} so EXISTING databases pick them up (CREATE IF NOT
+ * EXISTS can't alter a table that already exists).
+ * (When Postgres lands, a dialect-specific variant is generated.)
  */
 export const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS helpuit_investigations (
@@ -26,9 +29,12 @@ CREATE TABLE IF NOT EXISTS helpuit_docs (
   id TEXT PRIMARY KEY,
   title TEXT,
   text TEXT NOT NULL,
+  source TEXT,
+  external_id TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_docs_created ON helpuit_docs (created_at);
+CREATE INDEX IF NOT EXISTS idx_docs_source ON helpuit_docs (source, external_id);
 
 CREATE TABLE IF NOT EXISTS helpuit_tickets (
   id TEXT PRIMARY KEY,
@@ -174,3 +180,15 @@ CREATE TABLE IF NOT EXISTS helpuit_alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_at ON helpuit_alerts (at);
 `
+
+/**
+ * Additive column migrations for EXISTING databases. The CREATE statements above
+ * already include these columns for fresh DBs; this list lets the startup runner
+ * add them to a pre-existing table (SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+ * the runner checks `PRAGMA table_info` first and only alters when missing).
+ * Keep in sync with the table definitions above.
+ */
+export const COLUMN_BACKFILL: ReadonlyArray<{ table: string; column: string; type: string }> = [
+  { table: 'helpuit_docs', column: 'source', type: 'TEXT' },
+  { table: 'helpuit_docs', column: 'external_id', type: 'TEXT' },
+]

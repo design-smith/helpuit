@@ -1,5 +1,13 @@
 import { resilientFetch } from '@helpuit/resilience'
 
+/** One normalized message in a conversation transcript. */
+export interface ConversationMessage {
+  author: 'customer' | 'agent' | 'system'
+  text: string
+  /** Epoch milliseconds. */
+  at: number
+}
+
 /** Posts replies and private notes back to a Chatwoot conversation (issue 2). */
 export interface ChatwootClient {
   sendReply(conversationId: number, content: string): Promise<void>
@@ -41,6 +49,31 @@ export class HttpChatwootClient implements ChatwootClient {
 
   sendPrivateNote(conversationId: number, content: string): Promise<void> {
     return this.postMessage(conversationId, content, true)
+  }
+
+  /**
+   * Read the conversation transcript. Chatwoot `message_type`: 0 incoming
+   * (customer), 1 outgoing (agent, unless `private` → internal note), else
+   * activity. `created_at` is unix seconds → normalized to epoch ms. Empty/activity
+   * messages are dropped.
+   */
+  async getMessages(conversationId: number): Promise<ConversationMessage[]> {
+    const url = `${this.config.baseUrl}/api/v1/accounts/${this.config.accountId}/conversations/${conversationId}/messages`
+    const res = await resilientFetch(url, {
+      method: 'GET',
+      headers: { api_access_token: this.config.apiAccessToken },
+    })
+    if (!res.ok) throw new Error(`Chatwoot transcript fetch failed: ${res.status} ${res.statusText}`)
+    const json = (await res.json()) as {
+      payload?: Array<{ content?: string; message_type?: number; private?: boolean; created_at?: number }>
+    }
+    return (json.payload ?? [])
+      .filter((m) => typeof m.content === 'string' && m.content !== '')
+      .map((m) => ({
+        author: m.message_type === 0 ? 'customer' : m.message_type === 1 && m.private !== true ? 'agent' : 'system',
+        text: m.content as string,
+        at: (m.created_at ?? 0) * 1000,
+      }))
   }
 }
 

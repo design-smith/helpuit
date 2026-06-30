@@ -72,6 +72,22 @@ describe('LifecycleSync.handleEvent', () => {
     expect(client.notes).toHaveLength(2)
   })
 
+  it('records the issue open/closed status on the github links (when wired)', async () => {
+    const ticketing = new InMemoryTicketing()
+    const client = new FakeChatwootClient()
+    const updates: Array<{ n: number; status: string; at: number }> = []
+    const githubLinks = {
+      updateStatus: async (n: number, status: string, at: number) => void updates.push({ n, status, at }),
+    }
+    const sync = new LifecycleSync({ ticketing, client, mode: 'manual', githubLinks, now: () => 999 })
+
+    await sync.handleEvent({ type: 'closed', issueNumber: 42, closeReason: 'completed' })
+    expect(updates).toEqual([{ n: 42, status: 'closed', at: 999 }])
+
+    await sync.handleEvent({ type: 'opened', issueNumber: 42 })
+    expect(updates).toContainEqual({ n: 42, status: 'open', at: 999 })
+  })
+
   it('in manual mode posts private notes but does not message customers', async () => {
     const { sync, client } = await withLinkedTickets('manual')
     const outcome = await sync.handleEvent({

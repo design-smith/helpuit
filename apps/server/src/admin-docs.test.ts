@@ -69,4 +69,33 @@ describe('admin docs API (FCW-04)', () => {
     const after = await fetch(`${base}/admin/docs`, { headers: bearer })
     expect(((await after.json()) as { items: unknown[] }).items).toHaveLength(0)
   })
+
+  it('imports a source-tagged doc and re-import refreshes it in place (no duplicate)', async () => {
+    const { base, docs } = await start()
+    const post = (body: unknown) => fetch(`${base}/admin/docs`, { method: 'POST', headers: json, body: JSON.stringify(body) })
+
+    const a = await post({ title: 'Handbook', text: 'Vacation is 20 days.', source: 'gdrive', externalId: 'file-1' })
+    expect(a.status).toBe(200)
+    const created = (await a.json()) as { id: string; source: string; externalId: string }
+    expect(created).toMatchObject({ source: 'gdrive', externalId: 'file-1' })
+
+    const list1 = (await (await fetch(`${base}/admin/docs`, { headers: bearer })).json()) as {
+      items: Array<{ id: string; source: string; externalId: string }>
+    }
+    expect(list1.items).toHaveLength(1)
+    expect(list1.items[0]).toMatchObject({ source: 'gdrive', externalId: 'file-1' })
+
+    // Re-import the same file with new text → same id, replaced, no duplicate, live.
+    const b = await post({ text: 'Vacation is now 25 days.', source: 'gdrive', externalId: 'file-1' })
+    expect(((await b.json()) as { id: string }).id).toBe(created.id)
+    const list2 = (await (await fetch(`${base}/admin/docs`, { headers: bearer })).json()) as { items: unknown[] }
+    expect(list2.items).toHaveLength(1)
+    expect(docs.index.retrieve('vacation days')[0]!.text).toContain('25 days')
+  })
+
+  it('defaults source to "upload" when omitted (legacy paste path)', async () => {
+    const { base } = await start()
+    const res = await fetch(`${base}/admin/docs`, { method: 'POST', headers: json, body: JSON.stringify({ text: 'a plain note' }) })
+    expect(((await res.json()) as { source: string }).source).toBe('upload')
+  })
 })

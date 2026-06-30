@@ -55,6 +55,10 @@ interface HarnessOpts {
   docs?: Doc[]
   docsIndex?: DocsIndex
   perDay?: number
+  /** Per-integration on/off switches (default: all on). */
+  integrations?: Partial<{ github: boolean; chatwoot: boolean; identity: boolean; llm: boolean }>
+  /** When 'supabase', wire L2 via a connected Supabase project (direct REST) instead of query routes. */
+  accountSource?: 'supabase'
 }
 
 async function harness(opts: HarnessOpts = {}) {
@@ -129,6 +133,17 @@ models:
     vision: { model: local }
 budget:
   perDay: ${opts.perDay ?? 5_000_000}
+${opts.integrations ? `integrations: ${JSON.stringify(opts.integrations)}` : ''}
+${
+  opts.accountSource === 'supabase'
+    ? `accountData:
+  source: supabase
+  table: profiles
+  userColumn: userId
+  columns: [plan]
+  supabase: { projectRef: ref, restUrl: ${queryUrl} }`
+    : ''
+}
 `,
     {
       CHATWOOT_API_TOKEN: 'cw',
@@ -137,6 +152,7 @@ budget:
       HELPUIT_AUTOPUBLISH: 'auto',
       IDENTITY_HMAC_SECRET: SECRET,
       QUERY_ROUTES_TOKEN: 'qr',
+      SUPABASE_SERVICE_KEY: 'svc',
       OPENAI_COMPATIBLE_BASE_URL: llmUrl,
       SANDBOX_ADMIN_USER: 'a@x.com',
       SANDBOX_ADMIN_PASS: 'pw',
@@ -219,6 +235,17 @@ describe('buildOrchestrator', () => {
     expect((await db.select().from(investigations))[0]!.classification).toBe('account_data_issue')
   })
 
+  it('L2 via a connected Supabase project: reads account data directly over REST', async () => {
+    // accountData.source=supabase takes precedence over query routes; the executor
+    // reads the project's REST API (the fake account server returns the plan row).
+    const { orchestrator, chatwootReplies, db } = await harness({ guidanceConfidence: 0.2, accountSource: 'supabase' })
+    const outcome = await orchestrator.handleInbound(message, authed)
+
+    expect(outcome).toMatchObject({ handled: true, outcome: 'account_investigated' })
+    expect(chatwootReplies[0]!).toContain('Basic plan')
+    expect((await db.select().from(investigations))[0]!.classification).toBe('account_data_issue')
+  })
+
   it('L3a→L4: no account explanation → static investigation → files a real GitHub issue, tells the customer', async () => {
     const { orchestrator, chatwootReplies, createdIssues, db } = await harness({
       guidanceConfidence: 0.2,
@@ -232,6 +259,36 @@ describe('buildOrchestrator', () => {
     const inv = (await db.select().from(investigations))[0]!
     expect(inv.status).toBe('escalated')
     expect(inv.classification).toBe('new_bug')
+  })
+
+  it('integration OFF — GitHub disabled: a would-be escalation files NO GitHub issue', async () => {
+    // Same scenario as the "files a real GitHub issue" case, but GitHub is paused.
+    const { orchestrator, createdIssues } = await harness({
+      guidanceConfidence: 0.2,
+      accountHasHint: false,
+      integrations: { github: false },
+    })
+    const outcome = await orchestrator.handleInbound(message, authed)
+
+    expect(outcome.handled).toBe(true)
+    expect(createdIssues).toHaveLength(0) // GitHub gated → no issue filed
+  })
+
+  it('integration OFF — Identity disabled: an unauthenticated user is served (treated anonymous), not denied', async () => {
+    const { orchestrator, chatwootReplies } = await harness({ integrations: { identity: false } })
+    const outcome = await orchestrator.handleInbound(message, { customAttributes: {} })
+
+    expect(outcome).toMatchObject({ handled: true, outcome: 'guided' })
+    expect(chatwootReplies).toEqual(['Click Save on the billing page.'])
+  })
+
+  it('integration OFF — LLM disabled: no call reaches the model provider', async () => {
+    const { orchestrator, guidancePrompts, chatwootReplies } = await harness({ integrations: { llm: false } })
+    // The agent cannot reason with the LLM off; it must not call the provider.
+    await orchestrator.handleInbound(message, authed).catch(() => undefined)
+
+    expect(guidancePrompts).toEqual([])
+    expect(chatwootReplies).toEqual([])
   })
 
   it('budget: exceeding the day cap mid-flow degrades gracefully and stops LLM spend', async () => {

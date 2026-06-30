@@ -27,4 +27,28 @@ describe('InMemoryDocsIndex', () => {
     ])
     expect(index.retrieve('save', 2)).toHaveLength(2)
   })
+
+  it('upsert replaces a doc by id (no duplicate) and appends new ones', () => {
+    const index = new InMemoryDocsIndex()
+    index.ingest([{ id: 'a', text: 'alpha original' }])
+
+    index.upsert({ id: 'a', text: 'alpha updated' })
+    const hits = index.retrieve('alpha')
+    expect(hits).toHaveLength(1) // replaced, not duplicated
+    expect(hits[0]!.text).toBe('alpha updated')
+
+    index.upsert({ id: 'b', text: 'beta content' })
+    expect(index.retrieve('beta')[0]!.id).toBe('b')
+  })
+
+  it('removeById drops a doc from retrieval', () => {
+    const index = new InMemoryDocsIndex()
+    index.ingest([
+      { id: 'a', text: 'alpha' },
+      { id: 'b', text: 'beta' },
+    ])
+    index.removeById('a')
+    expect(index.retrieve('alpha')).toEqual([])
+    expect(index.retrieve('beta')[0]!.id).toBe('b')
+  })
 })

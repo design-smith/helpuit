@@ -21,11 +21,11 @@ describe('buildSetupChecklist', () => {
     const byId = Object.fromEntries(items.map((i) => [i.id, i]))
 
     expect(byId.github!.status).toBe('todo')
-    expect(byId.github!.href).toBe('/connections')
+    expect(byId.github!.href).toBe('/settings/connections')
     expect(byId.chatwoot!.status).toBe('todo')
-    expect(byId.chatwoot!.href).toBe('/connections')
+    expect(byId.chatwoot!.href).toBe('/settings/connections')
     expect(byId.llm!.status).toBe('todo')
-    expect(byId.llm!.href).toBe('/settings')
+    expect(byId.llm!.href).toBe('/settings/configuration')
 
     // Optional rungs are always offered, never blocking.
     expect(byId.docs!.status).toBe('optional')

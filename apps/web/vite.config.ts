@@ -11,6 +11,8 @@ const proxied = ['/admin', '/healthz', '/readyz', '/metrics', '/webhooks']
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  // Brand assets (logos, favicon) live here; served at '/' in dev and copied to dist/ on build.
+  publicDir: fileURLToPath(new URL('./src/public', import.meta.url)),
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: { outDir: 'dist', emptyOutDir: true },
   server: {

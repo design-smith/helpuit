@@ -1,22 +1,27 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider, useParams } from 'react-router-dom'
 import { ApiError, setUnauthorizedHandler } from './lib/api'
 import { AppShell } from './app/AppShell'
 import { LoginPage } from './features/auth/LoginPage'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { HomePage } from './features/setup/HomePage'
-import { InvestigationsListPage } from './features/investigations/InvestigationsListPage'
-import { InvestigationDetailPage } from './features/investigations/InvestigationDetailPage'
-import { TicketsListPage } from './features/tickets/TicketsListPage'
-import { DraftsPage } from './features/drafts/DraftsPage'
-import { ConversationsPage } from './features/conversations/ConversationsPage'
-import { SettingsPage } from './features/settings/SettingsPage'
+import { ConversationsListPage } from './features/conversations/ConversationsListPage'
+import { ConversationDetailPage } from './features/conversations/ConversationDetailPage'
+import { IssuesListPage } from './features/issues/IssuesListPage'
+import { ActivityPage } from './features/activity/ActivityPage'
+import { SettingsLayout } from './features/settings/SettingsLayout'
+import { ConfigurationPage } from './features/settings/ConfigurationPage'
 import { SecretsPage } from './features/settings/SecretsPage'
 import { ConnectionsPage } from './features/settings/ConnectionsPage'
+import { DocumentsPage } from './features/documents/DocumentsPage'
 import { ManifestPage } from './features/settings/ManifestPage'
-import { JobsPage } from './features/operations/JobsPage'
-import { AlertsPage } from './features/operations/AlertsPage'
 import { NotFoundPage } from './features/NotFoundPage'
+
+/** Old /investigations/:id deep links → the conversation detail (same id). */
+function RedirectInvestigation() {
+  const { id = '' } = useParams()
+  return <Navigate to={`/conversations/${id}`} replace />
+}
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -26,17 +31,32 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'investigations', element: <InvestigationsListPage /> },
-      { path: 'investigations/:id', element: <InvestigationDetailPage /> },
-      { path: 'tickets', element: <TicketsListPage /> },
-      { path: 'drafts', element: <DraftsPage /> },
-      { path: 'conversations', element: <ConversationsPage /> },
-      { path: 'connections', element: <ConnectionsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: 'manifest', element: <ManifestPage /> },
-      { path: 'secrets', element: <SecretsPage /> },
-      { path: 'jobs', element: <JobsPage /> },
-      { path: 'alerts', element: <AlertsPage /> },
+      { path: 'conversations', element: <ConversationsListPage /> },
+      { path: 'conversations/:id', element: <ConversationDetailPage /> },
+      { path: 'issues', element: <IssuesListPage /> },
+      { path: 'activity', element: <ActivityPage /> },
+      {
+        path: 'settings',
+        element: <SettingsLayout />,
+        children: [
+          { index: true, element: <Navigate to="connections" replace /> },
+          { path: 'connections', element: <ConnectionsPage /> },
+          { path: 'documents', element: <DocumentsPage /> },
+          { path: 'configuration', element: <ConfigurationPage /> },
+          { path: 'manifest', element: <ManifestPage /> },
+          { path: 'secrets', element: <SecretsPage /> },
+        ],
+      },
+      // Back-compat redirects for the consolidated pages (bookmarks, banners, stale tabs).
+      { path: 'investigations', element: <Navigate to="/conversations" replace /> },
+      { path: 'investigations/:id', element: <RedirectInvestigation /> },
+      { path: 'tickets', element: <Navigate to="/conversations?ticket=true" replace /> },
+      { path: 'drafts', element: <Navigate to="/conversations?pendingDraft=true" replace /> },
+      { path: 'jobs', element: <Navigate to="/activity" replace /> },
+      { path: 'alerts', element: <Navigate to="/activity" replace /> },
+      { path: 'connections', element: <Navigate to="/settings/connections" replace /> },
+      { path: 'manifest', element: <Navigate to="/settings/manifest" replace /> },
+      { path: 'secrets', element: <Navigate to="/settings/secrets" replace /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

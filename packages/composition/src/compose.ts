@@ -22,7 +22,14 @@ import { GuidanceAgent, InMemoryDocsIndex, ManifestCodeContextProvider, type Doc
 import { HttpChatwootClient } from '@helpuit/chatwoot'
 import { PersistingAuditLog } from '@helpuit/audit'
 import type { MatchVerdict } from '@helpuit/dedup'
-import { QueryRouteCatalog, QueryRouteClient, HttpRouteExecutor } from '@helpuit/query-routes'
+import {
+  QueryRouteCatalog,
+  QueryRouteClient,
+  HttpRouteExecutor,
+  PostgrestExecutor,
+  PostgresExecutor,
+  type RouteExecutor,
+} from '@helpuit/query-routes'
 import { AccountInvestigator } from '@helpuit/account-investigation'
 import { StaticCodeInvestigator } from '@helpuit/static-investigation'
 import type { FeatureManifest } from '@helpuit/feature-manifest'
@@ -99,7 +106,13 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
     apiAccessToken: config.chatwoot.apiToken,
   })
 
-  const identity = new IdentityResolver(createTokenVerifier(toVerifierConfig(config.identity)))
+  // Identity OFF → the verifier never resolves a user, so everyone is anonymous
+  // (allowAnonymous is forced on below). This is the "behaves as if not set up" pause.
+  const identity = new IdentityResolver(
+    config.integrations.identity
+      ? createTokenVerifier(toVerifierConfig(config.identity))
+      : { verify: () => Promise.resolve(null) },
+  )
   const investigations = new DrizzleInvestigationRepository(deps.db)
   const ticketing = new DrizzleTicketing(deps.db)
   const control = new DrizzleControlStore(deps.db)
@@ -115,7 +128,12 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
 
   // Lenient: a tier whose provider key is unset boots fine and errors clearly
   // only when used — so the server runs even before secrets are configured.
-  const router = new ModelRouter(config.models, { lenient: true })
+  // LLM OFF → blank the provider keys so every tier is that lenient "missing key"
+  // model: the agent can't reason and never calls a provider until toggled back on.
+  const router = new ModelRouter(
+    config.integrations.llm ? config.models : { ...config.models, providerKeys: {} },
+    { lenient: true },
+  )
 
   // Cost control: meter every LLM call's tokens and enforce day/month caps.
   // The in-memory ledger is the governor's synchronous fast path; the sink mirrors
@@ -146,8 +164,9 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
   }
   // Ground L1 guidance in the resolved feature's real code when a confirmed
   // manifest is available (issue 27) — degrades to docs-only otherwise.
+  // GitHub OFF → no code grounding (the retriever would hit GitHub).
   const codeContext =
-    deps.manifest !== undefined
+    config.integrations.github && deps.manifest !== undefined
       ? new ManifestCodeContextProvider(deps.manifest, new GitHubCodeRetriever(githubOptions))
       : undefined
   const guidance = new GuidanceAgent(
@@ -156,34 +175,53 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
     codeContext,
   )
 
-  // L2 account investigation — wired only when the founder configured query routes.
+  // L2 account investigation — pick the data source: a connected Supabase project
+  // (direct REST), a direct Postgres URL, or the legacy customer-deployed query
+  // routes. All read column-allowlisted, scoped to the verified user's row.
   let accountInvestigation: AccountInvestigationPort | undefined
-  if (config.queryRoutes !== undefined) {
+  const ad = config.accountData
+  const accountModel = () => createAccountModel(meter(router.forTier('reasoning')))
+
+  if (ad.source === 'supabase' && ad.supabase !== undefined && ad.table && ad.userColumn && ad.serviceKey && ad.columns.length > 0) {
+    const catalog = new QueryRouteCatalog([{ name: 'account', allowedColumns: ad.columns, param: ad.userColumn }])
+    const executor: RouteExecutor = new PostgrestExecutor({
+      restUrl: ad.supabase.restUrl,
+      serviceKey: ad.serviceKey,
+      routes: [{ name: 'account', table: ad.table, userColumn: ad.userColumn }],
+    })
+    accountInvestigation = new AccountInvestigator(
+      new QueryRouteClient(catalog, executor),
+      [{ route: 'account', columns: ad.columns }],
+      accountModel(),
+    )
+  } else if (ad.source === 'postgres' && ad.table && ad.userColumn && ad.dbUrl && ad.columns.length > 0) {
+    const catalog = new QueryRouteCatalog([{ name: 'account', allowedColumns: ad.columns, param: ad.userColumn }])
+    const executor: RouteExecutor = new PostgresExecutor({
+      connectionString: ad.dbUrl,
+      routes: [{ name: 'account', table: ad.table, userColumn: ad.userColumn }],
+    })
+    accountInvestigation = new AccountInvestigator(
+      new QueryRouteClient(catalog, executor),
+      [{ route: 'account', columns: ad.columns }],
+      accountModel(),
+    )
+  } else if (config.queryRoutes !== undefined) {
     const catalog = new QueryRouteCatalog(
       config.queryRoutes.routes.map((r) => ({ name: r.name, allowedColumns: r.columns, param: r.param })),
     )
     const executor = new HttpRouteExecutor({
       baseUrl: config.queryRoutes.baseUrl,
       token: config.queryRoutes.token,
-      routes: config.queryRoutes.routes.map((r) => ({
-        name: r.name,
-        method: r.method,
-        path: r.path,
-        param: r.param,
-      })),
+      routes: config.queryRoutes.routes.map((r) => ({ name: r.name, method: r.method, path: r.path, param: r.param })),
     })
-    const queryClient = new QueryRouteClient(catalog, executor)
     const queries = config.queryRoutes.routes.map((r) => ({ route: r.name, columns: r.columns }))
-    accountInvestigation = new AccountInvestigator(
-      queryClient,
-      queries,
-      createAccountModel(meter(router.forTier('reasoning'))),
-    )
+    accountInvestigation = new AccountInvestigator(new QueryRouteClient(catalog, executor), queries, accountModel())
   }
 
-  // L3a static code investigation — wired when a confirmed manifest is available.
+  // L3a static code investigation — wired when a confirmed manifest is available
+  // AND GitHub is on (it fetches suspect source from the repo).
   let staticInvestigation: StaticInvestigationPort | undefined
-  if (deps.manifest !== undefined) {
+  if (config.integrations.github && deps.manifest !== undefined) {
     staticInvestigation = new StaticCodeInvestigator(
       deps.manifest,
       new GitHubCodeRetriever(githubOptions),
@@ -198,10 +236,14 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
   // L3a → L4 escalation pipeline: dedup + (optionally) reproduce + file/link a real
   // GitHub issue. The tracker is wrapped in a redaction gate so no PII/secrets reach
   // GitHub even if an upstream summary slips.
+  // GitHub OFF → a no-op tracker/search; an escalation becomes a draft (autopublish
+  // forced off) and nothing is ever filed or searched on GitHub.
   const escalation: EscalationPort = new EscalationPipeline({
-    tracker: new RedactingIssueTracker(new GitHubIssueTracker(githubOptions)),
-    search: new GitHubIssueSearch(githubOptions),
-    autopublish: config.policy.autopublish === 'auto',
+    tracker: config.integrations.github
+      ? new RedactingIssueTracker(new GitHubIssueTracker(githubOptions))
+      : { create: () => Promise.reject(new Error('GitHub is turned off')), comment: () => Promise.resolve() },
+    search: config.integrations.github ? new GitHubIssueSearch(githubOptions) : { search: () => Promise.resolve([]) },
+    autopublish: config.integrations.github && config.policy.autopublish === 'auto',
     reproduction,
   })
 
@@ -225,7 +267,8 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
     draftStore,
     control,
     config: {
-      allowAnonymous: config.policy.allowAnonymous,
+      // Identity OFF → open the anonymous gate (the verifier already resolves nobody).
+      allowAnonymous: config.policy.allowAnonymous || !config.integrations.identity,
       guidanceThreshold: GUIDANCE_THRESHOLD,
     },
   })

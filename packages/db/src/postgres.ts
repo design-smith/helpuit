@@ -41,9 +41,14 @@ CREATE TABLE IF NOT EXISTS helpuit_docs (
   id TEXT PRIMARY KEY,
   title TEXT,
   text TEXT NOT NULL,
+  source TEXT,
+  external_id TEXT,
   created_at BIGINT NOT NULL
 );
+ALTER TABLE helpuit_docs ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE helpuit_docs ADD COLUMN IF NOT EXISTS external_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_docs_created ON helpuit_docs (created_at);
+CREATE INDEX IF NOT EXISTS idx_docs_source ON helpuit_docs (source, external_id);
 
 CREATE TABLE IF NOT EXISTS helpuit_tickets (
   id TEXT PRIMARY KEY,

@@ -55,6 +55,27 @@ const QueryRoutes = z.object({
   routes: z.array(QueryRoute).default([]),
 })
 
+/**
+ * L2 account-data source. `supabase`/`postgres` read a single table directly
+ * (column-allowlisted + scoped to the verified user's row, no raw SQL); creds are
+ * secrets (SUPABASE_SERVICE_KEY / ACCOUNT_DB_URL). `queryRoutes` is the legacy
+ * customer-deployed HTTP endpoint model. `none` disables account investigation.
+ */
+export const AccountData = z
+  .object({
+    source: z.enum(['none', 'supabase', 'postgres', 'queryRoutes']).default('none'),
+    /** Table read for direct sources (supabase/postgres). */
+    table: z.string().min(1).optional(),
+    /** Column matched against the verified user id (e.g. "id"). */
+    userColumn: z.string().min(1).optional(),
+    /** Allowlist of readable columns (direct sources). */
+    columns: z.array(z.string().min(1)).default([]),
+    /** Connected Supabase project (set by the OAuth connect flow). */
+    supabase: z.object({ projectRef: z.string().min(1), restUrl: z.string().url() }).optional(),
+  })
+  .default({})
+export type AccountData = z.infer<typeof AccountData>
+
 const Login = z.object({
   mode: z.enum(['form', 'api']).default('form'),
   url: z.string().url(),
@@ -88,6 +109,24 @@ const Docs = z
     // Repo paths/globs (at the production ref) whose markdown is ingested to ground
     // L1 guidance — e.g. "README.md" or a recursive "docs" markdown glob. Empty = none.
     repoPaths: z.array(z.string().min(1)).default([]),
+    /**
+     * Public Dropbox app key for the client-side Chooser drop-in. Browser-exposed
+     * (surfaced unmasked via effective config) — NOT a secret. Empty = Dropbox import off.
+     */
+    dropboxAppKey: z.string().min(1).optional(),
+    /**
+     * Public Google API (browser) key + OAuth client id for the client-side Picker.
+     * Both are public client identifiers (referrer/origin-restricted), surfaced
+     * unmasked to the browser — NOT secrets. Both required to enable Drive import.
+     */
+    googleApiKey: z.string().min(1).optional(),
+    googleClientId: z.string().min(1).optional(),
+    /**
+     * Public Microsoft app (client) id for the client-side OneDrive/SharePoint File
+     * Picker. A public client identifier (origin-restricted), surfaced unmasked to
+     * the browser — NOT a secret. Empty = OneDrive/SharePoint import off.
+     */
+    microsoftClientId: z.string().min(1).optional(),
   })
   .default({})
 
@@ -140,12 +179,28 @@ export const Alerts = z
   })
   .default({})
 
+/**
+ * Per-integration on/off switches (the console's connection toggles). Default ON,
+ * so existing configs (without this section) keep every integration enabled. When
+ * an integration is OFF, the orchestrator wires it as if it were never configured.
+ */
+export const Integrations = z
+  .object({
+    github: z.boolean().default(true),
+    chatwoot: z.boolean().default(true),
+    identity: z.boolean().default(true),
+    llm: z.boolean().default(true),
+  })
+  .default({})
+export type Integrations = z.infer<typeof Integrations>
+
 /** The structural (non-secret) config loaded from helpuit.config.yaml. */
 export const StructuredConfig = z.object({
   chatwoot: Chatwoot,
   github: GitHub,
   identity: Identity,
   queryRoutes: QueryRoutes.optional(),
+  accountData: AccountData,
   reproduction: Reproduction,
   features: z.array(Feature).default([]),
   docs: Docs,
@@ -154,6 +209,7 @@ export const StructuredConfig = z.object({
   budget: Budget,
   retention: Retention,
   alerts: Alerts,
+  integrations: Integrations,
 })
 
 export type StructuredConfig = z.infer<typeof StructuredConfig>

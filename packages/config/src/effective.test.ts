@@ -59,6 +59,32 @@ describe('resolveEffectiveConfig', () => {
     expect(config.chatwoot.baseUrl).toBe('https://chat.example.com') // untouched section preserved
   })
 
+  it('surfaces the public docs.dropboxAppKey unmasked (browser needs it for the Chooser)', () => {
+    const yaml = `${BASE_YAML}\ndocs: { dropboxAppKey: dbx-public-123 }\n`
+    const { config } = resolveEffectiveConfig({ baselineYaml: yaml, env: fullEnv })
+    expect(config.docs.dropboxAppKey).toBe('dbx-public-123')
+    const masked = maskConfig(config) as Record<string, any>
+    expect(masked.docs.dropboxAppKey).toBe('dbx-public-123') // public client key — never masked
+  })
+
+  it('surfaces the public Google Picker keys unmasked (browser needs them)', () => {
+    const yaml = `${BASE_YAML}\ndocs: { googleApiKey: gapi-public-1, googleClientId: client-123.apps.googleusercontent.com }\n`
+    const { config } = resolveEffectiveConfig({ baselineYaml: yaml, env: fullEnv })
+    expect(config.docs.googleApiKey).toBe('gapi-public-1')
+    expect(config.docs.googleClientId).toBe('client-123.apps.googleusercontent.com')
+    const masked = maskConfig(config) as Record<string, any>
+    expect(masked.docs.googleApiKey).toBe('gapi-public-1') // public client keys — never masked
+    expect(masked.docs.googleClientId).toBe('client-123.apps.googleusercontent.com')
+  })
+
+  it('surfaces the public Microsoft (OneDrive/SharePoint) client id unmasked', () => {
+    const yaml = `${BASE_YAML}\ndocs: { microsoftClientId: ms-app-abc123 }\n`
+    const { config } = resolveEffectiveConfig({ baselineYaml: yaml, env: fullEnv })
+    expect(config.docs.microsoftClientId).toBe('ms-app-abc123')
+    const masked = maskConfig(config) as Record<string, any>
+    expect(masked.docs.microsoftClientId).toBe('ms-app-abc123') // public app id — never masked
+  })
+
   it('masks every secret-bearing field', () => {
     const { config } = resolveEffectiveConfig({ baselineYaml: BASE_YAML, env: fullEnv })
     const masked = maskConfig(config) as Record<string, any>
