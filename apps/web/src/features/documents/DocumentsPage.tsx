@@ -45,6 +45,8 @@ export function DocumentsPage() {
   const [busy, setBusy] = useState(false)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  /** Which unconfigured provider's setup form is revealed (null = none). */
+  const [setupOpen, setSetupOpen] = useState<'dropbox' | 'gdrive' | 'sharepoint' | null>(null)
 
   const docsConfig = config.data?.config?.docs as Record<string, unknown> | undefined
   const dropboxAppKey = docsConfig?.dropboxAppKey as string | undefined
@@ -164,40 +166,56 @@ export function DocumentsPage() {
         <div className="mt-4 space-y-3 border-t-2 border-border pt-4">
           <p className="text-xs font-heading uppercase tracking-wide text-muted">Or import from a connected source</p>
 
-          {dropboxAppKey ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={() => void handleDropbox(dropboxAppKey)} disabled={busy}>
-                <Cloud className="h-4 w-4" />
-                Choose from Dropbox
-              </Button>
-              <span className="text-xs text-muted">Opens the Dropbox file picker — files are fetched and extracted in your browser.</span>
-            </div>
-          ) : (
-            <DropboxSetup currentDocs={docsConfig} disabled={config.isPending} />
-          )}
+          {/* Always-visible provider buttons: a configured one opens its picker; an
+              unconfigured one reveals its setup form below. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={busy}
+              onClick={() =>
+                dropboxAppKey !== undefined
+                  ? void handleDropbox(dropboxAppKey)
+                  : setSetupOpen(setupOpen === 'dropbox' ? null : 'dropbox')
+              }
+            >
+              <Cloud className="h-4 w-4" />
+              Dropbox
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                googleApiKey !== undefined && googleClientId !== undefined
+                  ? void handleGoogle(googleApiKey, googleClientId)
+                  : setSetupOpen(setupOpen === 'gdrive' ? null : 'gdrive')
+              }
+            >
+              <HardDrive className="h-4 w-4" />
+              Google Drive
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                microsoftClientId !== undefined
+                  ? void handleOneDrive(microsoftClientId)
+                  : setSetupOpen(setupOpen === 'sharepoint' ? null : 'sharepoint')
+              }
+            >
+              <FolderUp className="h-4 w-4" />
+              OneDrive / SharePoint
+            </Button>
+          </div>
+          <p className="text-xs text-muted">
+            Pick files from a connected source — they're fetched and extracted in your browser. Not connected yet?
+            Click a button to set it up.
+          </p>
 
-          {googleApiKey !== undefined && googleClientId !== undefined ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={() => void handleGoogle(googleApiKey, googleClientId)} disabled={busy}>
-                <HardDrive className="h-4 w-4" />
-                Choose from Google Drive
-              </Button>
-              <span className="text-xs text-muted">Google Docs are exported to text; uploaded files are downloaded — all extracted in your browser.</span>
-            </div>
-          ) : (
-            <GoogleSetup currentDocs={docsConfig} disabled={config.isPending} />
+          {setupOpen === 'dropbox' && dropboxAppKey === undefined && (
+            <DropboxSetup currentDocs={docsConfig} disabled={config.isPending} open onToggle={() => setSetupOpen(null)} />
           )}
-
-          {microsoftClientId !== undefined ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={() => void handleOneDrive(microsoftClientId)} disabled={busy}>
-                <FolderUp className="h-4 w-4" />
-                Choose from OneDrive / SharePoint
-              </Button>
-              <span className="text-xs text-muted">One picker for OneDrive and SharePoint — files are fetched and extracted in your browser.</span>
-            </div>
-          ) : (
-            <OneDriveSetup currentDocs={docsConfig} disabled={config.isPending} />
+          {setupOpen === 'gdrive' && !(googleApiKey !== undefined && googleClientId !== undefined) && (
+            <GoogleSetup currentDocs={docsConfig} disabled={config.isPending} open onToggle={() => setSetupOpen(null)} />
+          )}
+          {setupOpen === 'sharepoint' && microsoftClientId === undefined && (
+            <OneDriveSetup currentDocs={docsConfig} disabled={config.isPending} open onToggle={() => setSetupOpen(null)} />
           )}
         </div>
 
@@ -297,9 +315,18 @@ export function DocumentsPage() {
  * section (surfaced unmasked to the browser; it's not a secret). Sends the full
  * section so sibling fields (repoPaths) are preserved.
  */
-function DropboxSetup({ currentDocs, disabled }: { currentDocs: Record<string, unknown> | undefined; disabled: boolean }) {
+function DropboxSetup({
+  currentDocs,
+  disabled,
+  open,
+  onToggle,
+}: {
+  currentDocs: Record<string, unknown> | undefined
+  disabled: boolean
+  open: boolean
+  onToggle: () => void
+}) {
   const apply = useApplySection()
-  const [open, setOpen] = useState(false)
   const [key, setKey] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -313,7 +340,7 @@ function DropboxSetup({ currentDocs, disabled }: { currentDocs: Record<string, u
   }
 
   return (
-    <Disclosure label="Set up Dropbox import" open={open} onToggle={() => setOpen(!open)}>
+    <Disclosure label="Set up Dropbox import" open={open} onToggle={onToggle}>
       <Field
         label="Dropbox app key"
         hint="Create an app at dropbox.com/developers (Chooser/Saver), then paste its public App key. It's safe to expose in the browser — not a secret."
@@ -344,9 +371,18 @@ function DropboxSetup({ currentDocs, disabled }: { currentDocs: Record<string, u
  * into the `docs` config section (both browser-exposed, not secrets). Sends the
  * full section so siblings (repoPaths, dropboxAppKey) are preserved.
  */
-function GoogleSetup({ currentDocs, disabled }: { currentDocs: Record<string, unknown> | undefined; disabled: boolean }) {
+function GoogleSetup({
+  currentDocs,
+  disabled,
+  open,
+  onToggle,
+}: {
+  currentDocs: Record<string, unknown> | undefined
+  disabled: boolean
+  open: boolean
+  onToggle: () => void
+}) {
   const apply = useApplySection()
-  const [open, setOpen] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [clientId, setClientId] = useState('')
   const [saved, setSaved] = useState(false)
@@ -366,7 +402,7 @@ function GoogleSetup({ currentDocs, disabled }: { currentDocs: Record<string, un
 
   const ready = apiKey.trim() !== '' && clientId.trim() !== ''
   return (
-    <Disclosure label="Set up Google Drive import" open={open} onToggle={() => setOpen(!open)}>
+    <Disclosure label="Set up Google Drive import" open={open} onToggle={onToggle}>
       <Field
         label="Google API key + OAuth client id"
         hint="From a Google Cloud project with the Picker API enabled. Both are public client identifiers (origin-restricted) — safe to expose in the browser, not secrets."
@@ -398,9 +434,18 @@ function GoogleSetup({ currentDocs, disabled }: { currentDocs: Record<string, un
  * app id covers both OneDrive and SharePoint. Sends the full section so siblings
  * are preserved.
  */
-function OneDriveSetup({ currentDocs, disabled }: { currentDocs: Record<string, unknown> | undefined; disabled: boolean }) {
+function OneDriveSetup({
+  currentDocs,
+  disabled,
+  open,
+  onToggle,
+}: {
+  currentDocs: Record<string, unknown> | undefined
+  disabled: boolean
+  open: boolean
+  onToggle: () => void
+}) {
   const apply = useApplySection()
-  const [open, setOpen] = useState(false)
   const [clientId, setClientId] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -414,7 +459,7 @@ function OneDriveSetup({ currentDocs, disabled }: { currentDocs: Record<string, 
   }
 
   return (
-    <Disclosure label="Set up OneDrive / SharePoint import" open={open} onToggle={() => setOpen(!open)}>
+    <Disclosure label="Set up OneDrive / SharePoint import" open={open} onToggle={onToggle}>
       <Field
         label="Microsoft app (client) id"
         hint="Register an app in the Azure portal (with your console origin as a redirect URI). The client id is a public identifier — safe to expose in the browser, not a secret. One id covers OneDrive and SharePoint."
