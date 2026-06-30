@@ -43,7 +43,7 @@ const SPECS: GroupSpec[] = [
   { id: 'llm', title: 'LLM provider', usedBy: "The agent's reasoning and replies.", match: (k) => LLM_KEYS.has(k) },
   { id: 'identity', title: 'Customer identity', usedBy: 'Verifying who a customer is before reading their data.', match: (k) => k.startsWith('IDENTITY_') },
   { id: 'reproduction', title: 'Reproduction sandboxes', usedBy: 'Driving your app in a sandbox to reproduce bugs.', gate: 'reproduction', match: (k) => k.startsWith('SANDBOX_') },
-  { id: 'accountData', title: 'Account data', usedBy: 'Reading customer account state for L2 investigation.', gate: 'accountData', match: (k) => k.startsWith('QUERY_ROUTES_') },
+  { id: 'accountData', title: 'Database', usedBy: 'Reading customer account state for L2 investigation.', gate: 'accountData', match: (k) => k.startsWith('QUERY_ROUTES_') },
   { id: 'operations', title: 'Operations', usedBy: 'Admin login, encryption at rest, and alerting.', match: (k) => k.startsWith('HELPUIT_') },
 ]
 

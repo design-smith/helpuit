@@ -16,8 +16,11 @@ export interface GettingStartedStep {
 export const GETTING_STARTED_STEPS: readonly GettingStartedStep[] = [
   { id: 'github', title: 'Connect GitHub', href: '/settings/connections' },
   { id: 'chatwoot', title: 'Connect Chatwoot', href: '/settings/connections' },
-  { id: 'llm', title: 'Choose an LLM provider', href: '/settings/configuration' },
-  { id: 'identity', title: 'Verify customer identity', href: '/settings/configuration' },
+  // LLM provider is selected on Connections (the picker); keys live under Secrets.
+  { id: 'llm', title: 'Choose an LLM provider', href: '/settings/connections' },
+  // Identity is configured inline in the Getting-started card (see GettingStarted.tsx);
+  // this href is the persistent editor fallback.
+  { id: 'identity', title: 'Verify customer identity', href: '/settings/connections' },
 ]
 
 export const GETTING_STARTED_STORAGE_KEY = 'helpuit.gettingStarted.v1'

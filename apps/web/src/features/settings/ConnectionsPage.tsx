@@ -8,7 +8,6 @@ import {
   useSelectGithubRepo,
   useConnectGithubApp,
   useSetSecret,
-  useTestIdentity,
   useTestGitHub,
   useTestLlm,
   useValidateChatwoot,
@@ -25,7 +24,6 @@ import {
   type ChatwootValidation,
   type ChatwootSetupResult,
   type GitHubTestResult,
-  type IdentityTestResult,
   type LlmTestResult,
   type QueryRouteScaffoldResult,
   type EffectiveConfigView,
@@ -51,7 +49,7 @@ import {
   Textarea,
   Toggle,
 } from '../../components/ui'
-import { supabaseJwksUrl } from './identity-preset'
+import { IdentityFormInner } from './IdentityForm'
 import { parseColumnList } from './scaffold-form'
 import { integrationStatuses, availableLlmProviders, type IntegrationStatus } from './integration-status'
 
@@ -72,7 +70,7 @@ export function ConnectionsPage() {
   const advanced: Record<string, ReactNode> = {
     github: <GithubAdvanced github={data.config.github} />,
     chatwoot: <ChatwootAdvanced chatwoot={data.config.chatwoot} />,
-    identity: <IdentityAdvanced identity={data.config.identity} />,
+    identity: <IdentityFormInner identity={data.config.identity} />,
   }
 
   return (
@@ -413,111 +411,6 @@ function ChatwootAdvanced({ chatwoot }: { chatwoot: any }) {
   )
 }
 
-function IdentityAdvanced({ identity }: { identity: any }) {
-  const { save, result, pending } = useSectionForm('identity')
-  const secretMut = useSetSecret()
-  const test = useTestIdentity()
-  const [mode, setMode] = useState<string>(identity?.mode ?? 'hmac')
-  const [useridClaim, setUseridClaim] = useState<string>(identity?.useridClaim ?? 'sub')
-  const [jwksUrl, setJwksUrl] = useState<string>(identity?.jwksUrl ?? '')
-  const [verifyUrl, setVerifyUrl] = useState<string>(identity?.verifyUrl ?? '')
-  const [secretValue, setSecretValue] = useState<string>('')
-  const [secretSaved, setSecretSaved] = useState(false)
-  const [supabaseRef, setSupabaseRef] = useState<string>('')
-  const [testResult, setTestResult] = useState<IdentityTestResult | null>(null)
-
-  const secretKey = mode === 'hmac' ? 'IDENTITY_HMAC_SECRET' : mode === 'endpoint' ? 'IDENTITY_VERIFY_TOKEN' : null
-
-  return (
-    <div className="space-y-3">
-      <Field label="Mode" row>
-        <Select className="w-48" value={mode} onChange={(e) => setMode(e.target.value)}>
-          <option value="hmac">hmac (shared secret)</option>
-          <option value="jwt">jwt (JWKS)</option>
-          <option value="endpoint">endpoint (verify URL)</option>
-        </Select>
-      </Field>
-      <Field label="User-id claim" row>
-        <Input className="w-48" value={useridClaim} onChange={(e) => setUseridClaim(e.target.value)} />
-      </Field>
-      {mode === 'jwt' && (
-        <>
-          <Field label="JWKS URL" row>
-            <Input className="w-56" value={jwksUrl} onChange={(e) => setJwksUrl(e.target.value)} />
-          </Field>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input className="w-40" placeholder="Supabase project ref" value={supabaseRef} onChange={(e) => setSupabaseRef(e.target.value)} />
-            <Button disabled={supabaseRef.trim() === ''} onClick={() => setJwksUrl(supabaseJwksUrl(supabaseRef))}>
-              Use Supabase preset
-            </Button>
-          </div>
-        </>
-      )}
-      {mode === 'endpoint' && (
-        <Field label="Verify URL" row>
-          <Input className="w-56" value={verifyUrl} onChange={(e) => setVerifyUrl(e.target.value)} />
-        </Field>
-      )}
-      <SaveRow
-        result={result}
-        pending={pending}
-        onSave={() =>
-          save({
-            mode,
-            useridClaim,
-            ...(mode === 'jwt' ? { jwksUrl } : {}),
-            ...(mode === 'endpoint' ? { verifyUrl } : {}),
-          })
-        }
-      />
-      {secretKey !== null && (
-        <div className="space-y-2 border-t-2 border-border pt-3">
-          <p className="text-xs uppercase tracking-wide text-muted">
-            {mode === 'hmac' ? 'Shared secret' : 'Verify token'} · {secretKey}
-          </p>
-          <div className="flex items-center gap-3">
-            <Input
-              className="w-56"
-              type="password"
-              placeholder="enter to set / rotate"
-              value={secretValue}
-              onChange={(e) => {
-                setSecretValue(e.target.value)
-                setSecretSaved(false)
-              }}
-            />
-            <Button
-              disabled={secretValue === ''}
-              loading={secretMut.isPending}
-              onClick={async () => {
-                await secretMut.mutateAsync({ key: secretKey, value: secretValue })
-                setSecretValue('')
-                setSecretSaved(true)
-              }}
-            >
-              Set secret
-            </Button>
-            {secretSaved && <FormResult tone="warn">Saved — restart to apply</FormResult>}
-          </div>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-3 border-t-2 border-border pt-3">
-        <Button
-          loading={test.isPending}
-          onClick={async () => {
-            setTestResult(null)
-            setTestResult(await test.mutateAsync())
-          }}
-        >
-          Test identity
-        </Button>
-        {testResult?.ok === true && <FormResult tone="success">{testResult.detail}</FormResult>}
-        {testResult?.ok === false && <FormResult tone="error">{testResult.detail}</FormResult>}
-      </div>
-    </div>
-  )
-}
-
 /**
  * The LLM provider card: there's nothing to "connect" — you add a provider's key
  * under Secrets, then SELECT it here. The dropdown lists only providers whose key
@@ -528,6 +421,7 @@ function LlmCard({ status, view }: { status: IntegrationStatus; view: EffectiveC
   const apply = useApplySection()
   const test = useTestLlm()
   const [testResult, setTestResult] = useState<LlmTestResult | null>(null)
+  const [showSetup, setShowSetup] = useState(false)
   const available = availableLlmProviders(view)
   const provider = (view.config.models?.provider as string | undefined) ?? ''
 
@@ -567,19 +461,41 @@ function LlmCard({ status, view }: { status: IntegrationStatus; view: EffectiveC
               ))}
             </Select>
           ) : (
-            <LinkButton to="/settings/secrets" variant="primary">
-              Add a provider key
-            </LinkButton>
+            <Button variant="primary" onClick={() => setShowSetup(true)}>
+              Connect
+            </Button>
           )}
         </div>
       </div>
 
-      {available.length === 0 && (
-        <Callout tone="info">
-          No LLM provider keys yet. Add one (e.g. <span className="font-mono">ANTHROPIC_API_KEY</span>) under{' '}
-          <strong>Secrets</strong> and it'll become selectable here.
-        </Callout>
-      )}
+      <Modal
+        open={showSetup}
+        title="Connect an LLM provider"
+        onClose={() => setShowSetup(false)}
+        footer={
+          <>
+            <LinkButton to="/settings/secrets" variant="primary">
+              Go to Secrets
+            </LinkButton>
+            <Button onClick={() => setShowSetup(false)}>Close</Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <p>Helpuit reaches your model through a provider key. Add one and the provider becomes selectable here.</p>
+          <ol className="ml-4 list-decimal space-y-2">
+            <li>
+              In <span className="font-mono">Settings → Secrets</span>, set a provider key, for example{' '}
+              <span className="font-mono">ANTHROPIC_API_KEY</span>.
+            </li>
+            <li>
+              Other options: <span className="font-mono">OPENAI_API_KEY</span>, <span className="font-mono">DEEPSEEK_API_KEY</span>,
+              AWS Bedrock credentials, or an OpenAI-compatible base URL and key.
+            </li>
+            <li>Come back here and pick the provider from the dropdown.</li>
+          </ol>
+        </div>
+      </Modal>
 
       <div className="flex flex-wrap items-center gap-3 border-t-2 border-border pt-3">
         <Button
@@ -626,7 +542,7 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
 
   if (configured) {
     return (
-      <Section title="Account data" hint="The agent reads the verified customer's row — column-allowlisted, never raw SQL.">
+      <Section title="Database" hint="The agent reads the verified customer's row — column-allowlisted, never raw SQL.">
         <div className="space-y-3">
           <div className="text-sm">
             {ad.source === 'supabase' ? (
@@ -654,14 +570,14 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
 
   if (oauthConnected) {
     return (
-      <Section title="Account data — choose a project" hint="Pick the project + table the agent may read for account questions.">
+      <Section title="Database — choose a project" hint="Pick the project + table the agent may read for account questions.">
         <SupabaseProjectPicker />
       </Section>
     )
   }
 
   return (
-    <Section title="Account data (L2)" hint="Let the agent read a verified customer's account row to explain account-state issues.">
+    <Section title="Database (L2)" hint="Let the agent read a verified customer's account row to explain account-state issues.">
       <div className="space-y-3">
         <div className="space-y-1">
           <Button

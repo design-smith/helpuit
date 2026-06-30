@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, CheckToggle, ListRow, Section } from '../../components/ui'
+import { IdentityForm } from '../settings/IdentityForm'
 import {
   GETTING_STARTED_STEPS,
   GETTING_STARTED_STORAGE_KEY,
@@ -30,6 +31,8 @@ function readPersisted(): GettingStartedState {
  */
 export function GettingStarted() {
   const [state, setState] = useState<GettingStartedState>(readPersisted)
+  /** The identity step configures inline here (no bounce to another tab). */
+  const [identityOpen, setIdentityOpen] = useState(false)
 
   const persist = (next: GettingStartedState): void => {
     setState(next)
@@ -70,15 +73,21 @@ export function GettingStarted() {
         <ul className="space-y-2">
           {GETTING_STARTED_STEPS.map((step) => {
             const checked = state.done[step.id] === true
+            // Identity is configured inline below (it isn't a third-party connection);
+            // the rest link out to the page that completes them.
+            const action =
+              step.id === 'identity' ? (
+                <Button size="sm" onClick={() => setIdentityOpen((v) => !v)}>
+                  {identityOpen ? 'Hide' : 'Set up'}
+                </Button>
+              ) : (
+                <Link to={step.href} className="text-xs text-accent hover:underline">
+                  Open
+                </Link>
+              )
             return (
               <li key={step.id}>
-                <ListRow
-                  actions={
-                    <Link to={step.href} className="text-xs text-accent hover:underline">
-                      Open
-                    </Link>
-                  }
-                >
+                <ListRow actions={action}>
                   <CheckToggle checked={checked} onClick={() => persist(toggleStep(state, step.id))} label={step.title} />
                 </ListRow>
               </li>
@@ -86,6 +95,17 @@ export function GettingStarted() {
           })}
         </ul>
       </div>
+
+      {identityOpen && (
+        <div className="mt-5 border-t-2 border-border pt-4">
+          <h3 className="mb-2 font-heading text-foreground">Verify customer identity</h3>
+          <p className="mb-3 text-sm text-muted">
+            Tell Helpuit how to verify a customer's login token before it reads their account data. Set it up here — no
+            need to leave this page.
+          </p>
+          <IdentityForm />
+        </div>
+      )}
     </Section>
   )
 }
