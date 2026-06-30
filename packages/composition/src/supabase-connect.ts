@@ -104,6 +104,18 @@ export class SupabaseConnection implements SupabaseConnectionService {
       })
     let res = await call(await this.secret(SUPABASE_OAUTH_ACCESS_TOKEN))
     if (res.status === 401) res = await call(await this.refresh())
+    if (res.status === 403) {
+      // The token is valid but the OAuth app wasn't granted this scope. Scopes are
+      // fixed at OAuth-app creation (the authorize `scope` param is deprecated), so
+      // the operator must update the app and reconnect — tell them exactly how.
+      throw new Error(
+        'Supabase denied the request (403): your OAuth app is missing a required scope. ' +
+          'In Supabase → Organization settings → OAuth Apps, edit the app and grant ' +
+          '"Database: Write" (to read tables and columns) and "Secrets: Read" (to read the ' +
+          'project API keys), then disconnect and reconnect Supabase here. ' +
+          'Or skip OAuth and use the manual connection-string option.',
+      )
+    }
     if (!res.ok) throw new Error(`Supabase Management API ${path} failed: ${res.status} ${res.statusText}`)
     return res.json()
   }

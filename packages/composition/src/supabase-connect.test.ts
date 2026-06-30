@@ -36,6 +36,10 @@ async function fakeSupabase(): Promise<string> {
       res.end(JSON.stringify([{ ref: 'abcd', name: 'My Project', organization_id: 'org-1', region: 'us-east-1' }]))
     } else if (req.method === 'GET' && url === '/v1/projects/abcd/api-keys') {
       res.end(JSON.stringify([{ name: 'anon', api_key: 'anon-key' }, { name: 'service_role', api_key: 'svc-key' }]))
+    } else if (req.method === 'POST' && url === '/v1/projects/abcd/database/query') {
+      // The app's OAuth token lacks the Database:Write scope this endpoint requires.
+      res.statusCode = 403
+      res.end(JSON.stringify({ message: 'forbidden' }))
     } else {
       res.statusCode = 404
       res.end('{}')
@@ -101,6 +105,13 @@ describe('SupabaseConnection', () => {
     expect(cfg.table).toBe('profiles')
     expect(cfg.supabase).toEqual({ projectRef: 'abcd', restUrl: 'https://abcd.supabase.co/rest/v1' })
     expect((await restartFlag.get()).pending).toBe(true)
+  })
+
+  it('turns a Management API 403 into a clear, scope-actionable error', async () => {
+    const { svc } = await build()
+    await svc.completeCallback('the-code')
+    // 403 on /database/query → message must name the missing scopes + the fix.
+    await expect(svc.listTables('abcd')).rejects.toThrow(/Database: Write|Secrets: Read|scope/i)
   })
 
   it('refuses to build an authorize URL when the OAuth app is not configured', async () => {

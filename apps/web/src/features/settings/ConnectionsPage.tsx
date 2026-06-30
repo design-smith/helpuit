@@ -619,6 +619,10 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
               In Supabase, open <span className="font-mono">Organization settings → OAuth Apps</span> and add an application.
             </li>
             <li>
+              Grant these scopes (so Helpuit can read your schema + project key):{' '}
+              <strong>Projects: Read</strong>, <strong>Database: Write</strong>, <strong>Secrets: Read</strong>.
+            </li>
+            <li>
               Set its redirect URL to:
               <CodeBlock>{`${window.location.origin}/admin/connect/supabase/callback`}</CodeBlock>
             </li>
@@ -680,6 +684,14 @@ function SupabaseProjectPicker() {
           ))}
         </Select>
       </Field>
+      {ref !== '' && (tables.isError || cols.isError) && (
+        <Callout tone="warn">
+          Couldn't read this project from Supabase. Your OAuth app is most likely missing a scope — grant{' '}
+          <strong>Database: Write</strong> (to list tables/columns) and <strong>Secrets: Read</strong> (to read the
+          project API key) in Supabase → Organization settings → OAuth Apps, then disconnect and reconnect. Or use the
+          manual connection string below.
+        </Callout>
+      )}
       {ref !== '' && (
         <Field label="Table" row>
           <Select
