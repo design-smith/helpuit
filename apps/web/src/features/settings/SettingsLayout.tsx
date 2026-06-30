@@ -9,6 +9,7 @@ const TABS = [
   { to: '/settings/configuration', label: 'Configuration' },
   { to: '/settings/manifest', label: 'Manifest' },
   { to: '/settings/secrets', label: 'Secrets' },
+  { to: '/settings/testing', label: 'Testing' },
 ]
 
 export function SettingsLayout() {

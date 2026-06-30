@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { EffectiveConfigView } from '../../lib/api'
-import { integrationStatuses } from './integration-status'
+import { integrationStatuses, availableLlmProviders } from './integration-status'
 
 const view: EffectiveConfigView = {
   config: {
@@ -46,5 +46,24 @@ describe('integrationStatuses', () => {
   it('defaults enabled to true when the integrations map is absent (back-compat)', () => {
     const [gh] = integrationStatuses({ ...view, config: { ...view.config, integrations: undefined } })
     expect(gh!.enabled).toBe(true)
+  })
+})
+
+describe('availableLlmProviders', () => {
+  const withSecrets = (secrets: EffectiveConfigView['secrets']): EffectiveConfigView => ({ ...view, secrets })
+  const entry = (key: string) => ({ key, set: true, required: false, source: 'vault' as const })
+
+  it('lists only providers whose required credential is set', () => {
+    expect(availableLlmProviders(withSecrets([entry('ANTHROPIC_API_KEY')]))).toEqual(['anthropic'])
+    expect(availableLlmProviders(withSecrets([entry('ANTHROPIC_API_KEY'), entry('OPENAI_API_KEY')]))).toEqual([
+      'anthropic',
+      'openai',
+    ])
+    expect(availableLlmProviders(withSecrets([entry('AWS_REGION')]))).toEqual(['bedrock'])
+  })
+
+  it('is empty when no provider key is set (so the card prompts adding one in Secrets)', () => {
+    expect(availableLlmProviders(withSecrets([{ key: 'ANTHROPIC_API_KEY', set: false, required: true, source: 'unset' }]))).toEqual([])
+    expect(availableLlmProviders(withSecrets([]))).toEqual([])
   })
 })

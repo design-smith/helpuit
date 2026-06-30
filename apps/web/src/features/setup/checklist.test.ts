@@ -25,11 +25,15 @@ describe('buildSetupChecklist', () => {
     expect(byId.chatwoot!.status).toBe('todo')
     expect(byId.chatwoot!.href).toBe('/settings/connections')
     expect(byId.llm!.status).toBe('todo')
-    expect(byId.llm!.href).toBe('/settings/configuration')
+    expect(byId.llm!.href).toBe('/settings/connections')
+    expect(byId.identity!.status).toBe('todo')
+    expect(byId.identity!.href).toBe('/settings/connections')
 
-    // Optional rungs are always offered, never blocking.
+    // Optional rungs are always offered, never blocking — and link to where they're actually configured.
     expect(byId.docs!.status).toBe('optional')
+    expect(byId.docs!.href).toBe('/settings/documents')
     expect(byId.accountData!.status).toBe('optional')
+    expect(byId.accountData!.href).toBe('/settings/connections')
   })
 
   it('does not lose any blocker — every required blocker is reflected by a todo item', () => {

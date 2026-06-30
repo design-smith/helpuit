@@ -12,6 +12,7 @@ import { ActivityPage } from './features/activity/ActivityPage'
 import { SettingsLayout } from './features/settings/SettingsLayout'
 import { ConfigurationPage } from './features/settings/ConfigurationPage'
 import { SecretsPage } from './features/settings/SecretsPage'
+import { TestingPage } from './features/settings/TestingPage'
 import { ConnectionsPage } from './features/settings/ConnectionsPage'
 import { DocumentsPage } from './features/documents/DocumentsPage'
 import { ManifestPage } from './features/settings/ManifestPage'
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
           { path: 'configuration', element: <ConfigurationPage /> },
           { path: 'manifest', element: <ManifestPage /> },
           { path: 'secrets', element: <SecretsPage /> },
+          { path: 'testing', element: <TestingPage /> },
         ],
       },
       // Back-compat redirects for the consolidated pages (bookmarks, banners, stale tabs).

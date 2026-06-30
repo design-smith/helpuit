@@ -176,29 +176,24 @@ function TestLlmRow() {
 }
 
 function ModelsCard({ models }: { models: any }) {
-  const [provider, setProvider] = useState<string>(models.provider)
   const [guidance, setGuidance] = useState<string>(models.tiers.guidance.model)
   const [reasoning, setReasoning] = useState<string>(models.tiers.reasoning.model)
   const [vision, setVision] = useState<string>(models.tiers.vision.model)
-  const PROVIDERS = ['anthropic', 'openai', 'deepseek', 'bedrock', 'openai-compatible']
   return (
     <SectionCard
       title="Models"
       section="models"
-      hint="Default provider + per-tier model. Provider keys are set under Secrets."
+      hint="Per-tier models. Choose the provider + key under Connections / Secrets."
+      // Keep the current provider as-is — it's selected on the Connections tab.
       buildValue={() => ({
-        provider,
+        provider: models.provider,
         tiers: { guidance: { model: guidance }, reasoning: { model: reasoning }, vision: { model: vision } },
       })}
     >
-      <Field label="Default provider" row>
-        <Select className="w-48" value={provider} onChange={(e) => setProvider(e.target.value)}>
-          {PROVIDERS.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </Select>
+      <Field label="Provider" row>
+        <span className="text-sm text-muted">
+          <span className="font-mono text-foreground">{models.provider}</span> — change under Connections
+        </span>
       </Field>
       <Field label="Guidance model" row>
         <Input className="w-48" value={guidance} onChange={(e) => setGuidance(e.target.value)} />

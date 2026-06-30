@@ -11,7 +11,6 @@ import {
   useValidateChatwoot,
   useSetupChatwoot,
   useQueryRouteScaffold,
-  useSetChatwootToken,
   useToggleIntegration,
   useDisconnectConnection,
   useSupabaseConnect,
@@ -40,6 +39,7 @@ import {
   Field,
   FormResult,
   Input,
+  LinkButton,
   PageHeader,
   Section,
   Select,
@@ -47,7 +47,7 @@ import {
 } from '../../components/ui'
 import { supabaseJwksUrl } from './identity-preset'
 import { parseColumnList } from './scaffold-form'
-import { integrationStatuses, type IntegrationStatus } from './integration-status'
+import { integrationStatuses, availableLlmProviders, type IntegrationStatus } from './integration-status'
 
 function useSectionForm(section: string) {
   const apply = useApplySection()
@@ -67,7 +67,6 @@ export function ConnectionsPage() {
     github: <GithubAdvanced github={data.config.github} />,
     chatwoot: <ChatwootAdvanced chatwoot={data.config.chatwoot} />,
     identity: <IdentityAdvanced identity={data.config.identity} />,
-    llm: <LlmAdvanced models={data.config.models} />,
   }
 
   return (
@@ -77,16 +76,19 @@ export function ConnectionsPage() {
         subtitle="Connect an integration, then flip it on or off. Toggles apply live; Advanced holds manual setup + disconnect."
       />
       <div className="grid gap-4 lg:grid-cols-2">
-        {statuses.map((status) => (
-          <IntegrationCard key={status.id} status={status} enabledMap={enabledMap}>
-            {advanced[status.id]}
-          </IntegrationCard>
-        ))}
+        {statuses.map((status) =>
+          status.id === 'llm' ? (
+            <LlmCard key={status.id} status={status} view={data} />
+          ) : (
+            <IntegrationCard key={status.id} status={status} enabledMap={enabledMap}>
+              {advanced[status.id]}
+            </IntegrationCard>
+          ),
+        )}
       </div>
 
       <h2 className="mb-3 mt-8 text-sm font-heading uppercase tracking-wide text-muted">Operational helpers</h2>
       <div className="grid gap-4 lg:grid-cols-2">
-        <ChatwootTokenCard />
         <AccountDataCard data={data} />
       </div>
     </div>
@@ -391,73 +393,73 @@ function IdentityAdvanced({ identity }: { identity: any }) {
   )
 }
 
-/** The provider's single API-key secret (multi-cred providers are set under Secrets). */
-const LLM_SECRET: Record<string, string> = {
-  anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  deepseek: 'DEEPSEEK_API_KEY',
-}
-
-function LlmAdvanced({ models }: { models: any }) {
-  const { save, result, pending } = useSectionForm('models')
-  const secretMut = useSetSecret()
+/**
+ * The LLM provider card: there's nothing to "connect" — you add a provider's key
+ * under Secrets, then SELECT it here. The dropdown lists only providers whose key
+ * is set, so it doubles as "which providers are available". Selecting one applies
+ * live. Per-tier models are tuned on the Configuration tab.
+ */
+function LlmCard({ status, view }: { status: IntegrationStatus; view: EffectiveConfigView }) {
+  const apply = useApplySection()
   const test = useTestLlm()
-  const [provider, setProvider] = useState<string>(models?.provider ?? 'anthropic')
-  const [keyValue, setKeyValue] = useState<string>('')
-  const [secretSaved, setSecretSaved] = useState(false)
   const [testResult, setTestResult] = useState<LlmTestResult | null>(null)
-  const keyName = LLM_SECRET[provider]
+  const available = availableLlmProviders(view)
+  const provider = (view.config.models?.provider as string | undefined) ?? ''
+
+  async function selectProvider(next: string): Promise<void> {
+    await apply.mutateAsync({ section: 'models', value: { provider: next, tiers: view.config.models?.tiers } })
+  }
 
   return (
-    <div className="space-y-3">
-      <Field label="Provider" row>
-        <Select className="w-56" value={provider} onChange={(e) => setProvider(e.target.value)}>
-          <option value="anthropic">anthropic</option>
-          <option value="openai">openai</option>
-          <option value="deepseek">deepseek</option>
-          <option value="bedrock">bedrock</option>
-          <option value="openai-compatible">openai-compatible</option>
-        </Select>
-      </Field>
-      <SaveRow result={result} pending={pending} onSave={() => save({ provider, tiers: models?.tiers })} />
-
-      {keyName !== undefined ? (
-        <div className="space-y-2 border-t-2 border-border pt-3">
-          <p className="text-xs uppercase tracking-wide text-muted">API key · {keyName}</p>
-          <div className="flex items-center gap-3">
-            <Input
-              className="w-56"
-              type="password"
-              placeholder="enter to set / rotate"
-              value={keyValue}
-              onChange={(e) => {
-                setKeyValue(e.target.value)
-                setSecretSaved(false)
-              }}
-            />
-            <Button
-              disabled={keyValue === ''}
-              loading={secretMut.isPending}
-              onClick={async () => {
-                await secretMut.mutateAsync({ key: keyName, value: keyValue })
-                setKeyValue('')
-                setSecretSaved(true)
-              }}
-            >
-              Set key
-            </Button>
-            {secretSaved && <FormResult tone="warn">Saved — restart to apply</FormResult>}
+    <div className="card flex flex-col gap-3 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="font-heading text-foreground">{status.label}</h3>
+          <div className="mt-0.5 truncate text-sm text-muted">
+            {status.connected ? (
+              <>
+                {status.account}
+                {status.access !== undefined && <span className="font-mono"> · {status.access}</span>}
+              </>
+            ) : (
+              'No provider selected'
+            )}
           </div>
         </div>
-      ) : (
-        <p className="border-t-2 border-border pt-3 text-xs text-muted">
-          {provider} needs multiple credentials — set them under Settings → Secrets.
-        </p>
+        <div className="shrink-0">
+          {available.length > 0 ? (
+            <Select
+              className="w-44"
+              value={available.includes(provider) ? provider : ''}
+              disabled={apply.isPending}
+              onChange={(e) => void selectProvider(e.target.value)}
+            >
+              {!available.includes(provider) && <option value="">Select provider…</option>}
+              {available.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <LinkButton to="/settings/secrets" variant="primary">
+              Add a provider key
+            </LinkButton>
+          )}
+        </div>
+      </div>
+
+      {available.length === 0 && (
+        <Callout tone="info">
+          No LLM provider keys yet. Add one (e.g. <span className="font-mono">ANTHROPIC_API_KEY</span>) under{' '}
+          <strong>Secrets</strong> and it'll become selectable here.
+        </Callout>
       )}
 
       <div className="flex flex-wrap items-center gap-3 border-t-2 border-border pt-3">
         <Button
           loading={test.isPending}
+          disabled={!status.connected}
           onClick={async () => {
             setTestResult(null)
             setTestResult(await test.mutateAsync())
@@ -467,57 +469,9 @@ function LlmAdvanced({ models }: { models: any }) {
         </Button>
         {testResult?.ok === true && <FormResult tone="success">{testResult.detail}</FormResult>}
         {testResult?.ok === false && <FormResult tone="error">{testResult.detail}</FormResult>}
+        <span className="text-xs text-muted">Keys are managed under Secrets. Per-tier models on the Configuration tab.</span>
       </div>
-      <p className="text-xs text-muted">Fine-tune per-tier models on the Configuration tab.</p>
     </div>
-  )
-}
-
-const WIDGET_SNIPPET = `// After your app verifies the customer and mints their Helpuit token:
-window.$chatwoot?.setCustomAttributes({ helpuit_auth_token: helpuitToken })`
-
-/** L2 hand-off: get the verified customer token onto a Chatwoot conversation (FCW-20). */
-function ChatwootTokenCard() {
-  const setToken = useSetChatwootToken()
-  const [conversationId, setConversationId] = useState<string>('')
-  const [authToken, setAuthToken] = useState<string>('')
-  const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null)
-
-  return (
-    <Section
-      title="Customer token hand-off"
-      hint={
-        <>
-          L2 account investigation needs the customer's <em>verified</em> token on the conversation. From your
-          verified-auth backend, set it here (uses the configured Chatwoot creds).
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Field label="Conversation ID" row>
-          <Input className="w-32 text-right" type="number" value={conversationId} onChange={(e) => setConversationId(e.target.value)} />
-        </Field>
-        <Field label="Verified token" row>
-          <Input className="w-56" type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} />
-        </Field>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="primary"
-            disabled={authToken === '' || !Number.isInteger(Number(conversationId))}
-            loading={setToken.isPending}
-            onClick={async () => setResult(await setToken.mutateAsync({ conversationId: Number(conversationId), authToken }))}
-          >
-            Set token
-          </Button>
-          {result?.ok === true && <FormResult tone="success">{result.detail}</FormResult>}
-          {result?.ok === false && <FormResult tone="error">{result.detail}</FormResult>}
-        </div>
-        <div className="border-t-2 border-border pt-3">
-          <p className="mb-1 text-xs uppercase tracking-wide text-muted">Or set it from the browser widget</p>
-          <CodeBlock>{WIDGET_SNIPPET}</CodeBlock>
-        </div>
-      </div>
-    </Section>
   )
 }
 

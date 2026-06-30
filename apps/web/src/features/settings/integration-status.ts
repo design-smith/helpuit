@@ -17,6 +17,9 @@ export interface IntegrationStatus {
   access?: string
 }
 
+/** The supported LLM providers, in display order. */
+export const LLM_PROVIDERS = ['anthropic', 'openai', 'deepseek', 'bedrock', 'openai-compatible'] as const
+
 /** The required secret that proves an LLM provider is configured. */
 const LLM_KEY: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
@@ -24,6 +27,16 @@ const LLM_KEY: Record<string, string> = {
   deepseek: 'DEEPSEEK_API_KEY',
   bedrock: 'AWS_REGION',
   'openai-compatible': 'OPENAI_COMPATIBLE_BASE_URL',
+}
+
+/**
+ * The LLM providers a user can actually select on the Connections card: those whose
+ * required credential is already set (in the vault or env). Keys are managed under
+ * Secrets — adding one makes its provider selectable here.
+ */
+export function availableLlmProviders(view: EffectiveConfigView): string[] {
+  const isSet = (key: string): boolean => view.secrets.find((s) => s.key === key)?.set ?? false
+  return LLM_PROVIDERS.filter((provider) => isSet(LLM_KEY[provider] ?? ''))
 }
 
 /**
