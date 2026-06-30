@@ -540,64 +540,73 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
   const [advanced, setAdvanced] = useState(false)
   const [showSetup, setShowSetup] = useState(false)
 
-  if (configured) {
-    return (
-      <Section title="Database" hint="The agent reads the verified customer's row — column-allowlisted, never raw SQL.">
-        <div className="space-y-3">
-          <div className="text-sm">
-            {ad.source === 'supabase' ? (
-              <>
-                <Badge tone="emerald">Supabase</Badge> project <span className="font-mono">{ad.supabase?.projectRef}</span>
-              </>
-            ) : (
-              <>
-                <Badge tone="emerald">Postgres</Badge> direct connection
-              </>
-            )}
-            {ad.table !== undefined && (
-              <div className="mt-1 text-muted">
-                table <span className="font-mono">{ad.table}</span> · {(ad.columns ?? []).join(', ')}
-              </div>
-            )}
-          </div>
-          <Button variant="danger" loading={disconnect.isPending} onClick={() => disconnect.mutate('accountData')}>
-            Disconnect
-          </Button>
-        </div>
-      </Section>
-    )
-  }
-
-  if (oauthConnected) {
-    return (
-      <Section title="Database — choose a project" hint="Pick the project + table the agent may read for account questions.">
-        <SupabaseProjectPicker />
-      </Section>
-    )
-  }
+  // One cohesive card (like the GitHub card): a clear status, a Disconnect that's
+  // available in ANY connected state — including OAuth-connected-but-not-yet-configured,
+  // so you can always back out — and the connect flow when nothing is wired.
+  const connected = configured || oauthConnected
 
   return (
-    <Section title="Database (L2)" hint="Let the agent read a verified customer's account row to explain account-state issues.">
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Button
-            variant="primary"
-            loading={connect.isPending}
-            onClick={() => (clientConfigured ? connect.mutate() : setShowSetup(true))}
-          >
-            Connect Supabase
+    <Section
+      title="Database"
+      hint="Let the agent read a verified customer's account row — column-allowlisted, never raw SQL — to explain account-state issues."
+      actions={
+        connected ? (
+          <Button variant="danger" size="sm" loading={disconnect.isPending} onClick={() => disconnect.mutate('accountData')}>
+            Disconnect
           </Button>
-          {!clientConfigured && (
-            <p className="text-xs text-muted">First time? We&apos;ll walk you through the one-time setup.</p>
+        ) : undefined
+      }
+    >
+      {configured ? (
+        <div className="space-y-1 text-sm">
+          {ad.source === 'supabase' ? (
+            <div>
+              <Badge tone="emerald">Supabase</Badge> project <span className="font-mono">{ad.supabase?.projectRef}</span>
+            </div>
+          ) : (
+            <div>
+              <Badge tone="emerald">Postgres</Badge> direct connection
+            </div>
           )}
+          {ad.table !== undefined && (
+            <div className="text-muted">
+              table <span className="font-mono">{ad.table}</span> · {(ad.columns ?? []).join(', ')}
+            </div>
+          )}
+          <p className="pt-1 text-xs text-muted">Disconnect (top right) to switch projects or change the source.</p>
         </div>
-        <Disclosure label="Use a connection string / manual setup" open={advanced} onToggle={() => setAdvanced(!advanced)}>
-          <PostgresUrlForm />
-          <div className="border-t-2 border-border pt-3">
-            <LegacyScaffold />
+      ) : oauthConnected ? (
+        <div className="space-y-3">
+          <div className="text-sm">
+            <Badge tone="sky">Authorized</Badge> Connected to Supabase — pick the project and table to read.
           </div>
-        </Disclosure>
-      </div>
+          <SupabaseProjectPicker />
+          <p className="text-xs text-muted">
+            Wrong account, or stuck? Disconnect (top right) and start over — or use a manual connection string instead.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Button
+              variant="primary"
+              loading={connect.isPending}
+              onClick={() => (clientConfigured ? connect.mutate() : setShowSetup(true))}
+            >
+              Connect Supabase
+            </Button>
+            {!clientConfigured && (
+              <p className="text-xs text-muted">First time? We&apos;ll walk you through the one-time setup.</p>
+            )}
+          </div>
+          <Disclosure label="Use a connection string / manual setup" open={advanced} onToggle={() => setAdvanced(!advanced)}>
+            <PostgresUrlForm />
+            <div className="border-t-2 border-border pt-3">
+              <LegacyScaffold />
+            </div>
+          </Disclosure>
+        </div>
+      )}
 
       <Modal
         open={showSetup}
