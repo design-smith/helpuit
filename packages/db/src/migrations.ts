@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS helpuit_docs (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_docs_created ON helpuit_docs (created_at);
-CREATE INDEX IF NOT EXISTS idx_docs_source ON helpuit_docs (source, external_id);
 
 CREATE TABLE IF NOT EXISTS helpuit_tickets (
   id TEXT PRIMARY KEY,
@@ -191,4 +190,15 @@ CREATE INDEX IF NOT EXISTS idx_alerts_at ON helpuit_alerts (at);
 export const COLUMN_BACKFILL: ReadonlyArray<{ table: string; column: string; type: string }> = [
   { table: 'helpuit_docs', column: 'source', type: 'TEXT' },
   { table: 'helpuit_docs', column: 'external_id', type: 'TEXT' },
+]
+
+/**
+ * Indexes over {@link COLUMN_BACKFILL} columns. These CANNOT live in the CREATE
+ * block above: on a database that predates the columns, `CREATE TABLE IF NOT
+ * EXISTS` is a no-op (the columns aren't added there), so an index referencing
+ * them would fail with "no such column". The startup runner applies these only
+ * AFTER the columns are backfilled. All `IF NOT EXISTS`, so safe every boot.
+ */
+export const BACKFILL_INDEXES: ReadonlyArray<string> = [
+  'CREATE INDEX IF NOT EXISTS idx_docs_source ON helpuit_docs (source, external_id)',
 ]
