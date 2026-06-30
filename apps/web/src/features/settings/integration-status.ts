@@ -66,8 +66,13 @@ export function integrationStatuses(view: EffectiveConfigView): IntegrationStatu
   return [
     {
       id: 'github',
+      // Connected only once credentials AND a chosen repo are present — so the card
+      // flips to a toggle when the operator has actually picked the repo to use.
       label: 'GitHub',
-      connected: isSet('GITHUB_TOKEN') || isSet('GITHUB_APP_PRIVATE_KEY'),
+      connected:
+        (isSet('GITHUB_TOKEN') || isSet('GITHUB_APP_PRIVATE_KEY')) &&
+        Boolean(cfg.github?.owner) &&
+        Boolean(cfg.github?.repo),
       enabled: enabled('github'),
       issue: issueOf('github'),
       account: cfg.github?.owner,

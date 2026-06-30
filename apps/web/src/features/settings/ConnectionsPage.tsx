@@ -3,7 +3,10 @@ import { Github } from 'lucide-react'
 import {
   useApplySection,
   useEffectiveConfig,
-  useGithubConnect,
+  useGithubInstall,
+  useGithubRepos,
+  useSelectGithubRepo,
+  useConnectGithubApp,
   useSetSecret,
   useTestIdentity,
   useTestGitHub,
@@ -40,9 +43,12 @@ import {
   FormResult,
   Input,
   LinkButton,
+  Modal,
   PageHeader,
   Section,
   Select,
+  Spinner,
+  Textarea,
   Toggle,
 } from '../../components/ui'
 import { supabaseJwksUrl } from './identity-preset'
@@ -176,35 +182,98 @@ function SaveRow({ result, pending, onSave }: { result: ApplyResult | null; pend
 
 function GithubAdvanced({ github }: { github: any }) {
   const { save, result, pending } = useSectionForm('github')
-  const connect = useGithubConnect()
+  const install = useGithubInstall()
+  const selectRepo = useSelectGithubRepo()
   const test = useTestGitHub()
+  const hasApp = Boolean(github?.appId ?? github?.slug)
+  const repos = useGithubRepos(hasApp)
+  const currentRepo = github?.owner && github?.repo ? `${github.owner}/${github.repo}` : ''
   const [owner, setOwner] = useState<string>(github?.owner ?? '')
   const [repo, setRepo] = useState<string>(github?.repo ?? '')
   const [branch, setBranch] = useState<string>(github?.productionBranch ?? 'main')
+  const [tokenOpen, setTokenOpen] = useState(false)
+  const [extOpen, setExtOpen] = useState(false)
   const [testResult, setTestResult] = useState<GitHubTestResult | null>(null)
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted">
-        Recommended: connect a GitHub App — scoped to the repo you pick, short-lived tokens, webhook auto-wired.
-      </p>
-      <Button variant="primary" onClick={() => connect.mutate()} loading={connect.isPending}>
-        <Github className="h-4 w-4" /> Connect with GitHub
-      </Button>
+    <div className="space-y-4">
+      {/* GitHub App: create once, then reuse to add/reconfigure repos (never a new app). */}
+      <div className="space-y-2">
+        <p className="text-sm text-muted">
+          {hasApp
+            ? 'A GitHub App is connected. Add or reconfigure repositories — the same app is reused, never recreated.'
+            : 'Recommended: connect a GitHub App — scoped to the repos you pick, short-lived tokens, webhook auto-wired.'}
+        </p>
+        <Button variant="primary" onClick={() => install.mutate()} loading={install.isPending}>
+          <Github className="h-4 w-4" /> {hasApp ? 'Add / reconfigure repositories' : 'Connect with GitHub'}
+        </Button>
+        {hasApp && (
+          <div className="text-xs text-muted">
+            App <span className="font-mono text-foreground">{github.slug ?? github.appId}</span>
+            {github.installationId !== undefined && <> · installation #{github.installationId}</>}
+          </div>
+        )}
+      </div>
 
-      <div className="space-y-3 border-t-2 border-border pt-3">
-        <p className="text-xs uppercase tracking-wide text-muted">Or set the repo manually (token mode)</p>
-        <Field label="Owner" row>
-          <Input className="w-56" value={owner} onChange={(e) => setOwner(e.target.value)} />
-        </Field>
-        <Field label="Repo" row>
-          <Input className="w-56" value={repo} onChange={(e) => setRepo(e.target.value)} />
-        </Field>
-        <Field label="Production branch" row>
-          <Input className="w-56" value={branch} onChange={(e) => setBranch(e.target.value)} />
-        </Field>
-        <p className="text-xs text-muted">Set GITHUB_TOKEN under Settings → Secrets for token mode.</p>
-        <SaveRow result={result} pending={pending} onSave={() => save({ owner, repo, productionBranch: branch, auth: 'pat' })} />
+      {/* Repo picker — the operator chooses the exact repo from the installation. */}
+      {hasApp && (
+        <div className="space-y-2 border-t-2 border-border pt-3">
+          <p className="text-xs uppercase tracking-wide text-muted">Repository to use</p>
+          {repos.isPending ? (
+            <Spinner label="Loading repositories…" />
+          ) : repos.isError ? (
+            <FormResult tone="error">Couldn't list repositories — finish installing the app above, then reopen.</FormResult>
+          ) : repos.data.length === 0 ? (
+            <FormResult tone="warn">No repositories granted yet — use “Add / reconfigure repositories” and grant access.</FormResult>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                className="w-72"
+                value={repos.data.some((r) => r.fullName === currentRepo) ? currentRepo : ''}
+                disabled={selectRepo.isPending}
+                onChange={(e) => {
+                  const choice = repos.data.find((r) => r.fullName === e.target.value)
+                  if (choice !== undefined) void selectRepo.mutateAsync({ owner: choice.owner, repo: choice.repo })
+                }}
+              >
+                <option value="">Select a repository…</option>
+                {repos.data.map((r) => (
+                  <option key={r.fullName} value={r.fullName}>
+                    {r.fullName}
+                  </option>
+                ))}
+              </Select>
+              {selectRepo.isPending && <Spinner />}
+              {selectRepo.data?.status === 'ok' && <FormResult tone="warn">Saved — restart to apply</FormResult>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bring an existing, externally-created GitHub App. */}
+      <div className="border-t-2 border-border pt-3">
+        <Disclosure label="Use an existing GitHub App (paste credentials)" open={extOpen} onToggle={() => setExtOpen(!extOpen)}>
+          <ExistingAppForm />
+        </Disclosure>
+      </div>
+
+      {/* Manual PAT mode. */}
+      <div className="border-t-2 border-border pt-3">
+        <Disclosure label="Set the repo manually (token mode)" open={tokenOpen} onToggle={() => setTokenOpen(!tokenOpen)}>
+          <div className="space-y-3">
+            <Field label="Owner" row>
+              <Input className="w-56" value={owner} onChange={(e) => setOwner(e.target.value)} />
+            </Field>
+            <Field label="Repo" row>
+              <Input className="w-56" value={repo} onChange={(e) => setRepo(e.target.value)} />
+            </Field>
+            <Field label="Production branch" row>
+              <Input className="w-56" value={branch} onChange={(e) => setBranch(e.target.value)} />
+            </Field>
+            <p className="text-xs text-muted">Set GITHUB_TOKEN under Settings → Secrets for token mode.</p>
+            <SaveRow result={result} pending={pending} onSave={() => save({ owner, repo, productionBranch: branch, auth: 'pat' })} />
+          </div>
+        </Disclosure>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t-2 border-border pt-3">
@@ -219,6 +288,62 @@ function GithubAdvanced({ github }: { github: any }) {
         </Button>
         {testResult?.ok === true && <FormResult tone="success">{testResult.detail}</FormResult>}
         {testResult?.ok === false && <FormResult tone="error">{testResult.detail}</FormResult>}
+      </div>
+    </div>
+  )
+}
+
+/** Link a GitHub App created outside Helpuit: App id + private key (PEM) + installation id. */
+function ExistingAppForm() {
+  const connectApp = useConnectGithubApp()
+  const [appId, setAppId] = useState('')
+  const [privateKey, setPrivateKey] = useState('')
+  const [installationId, setInstallationId] = useState('')
+  const [slug, setSlug] = useState('')
+  const ready = appId.trim() !== '' && privateKey.trim() !== '' && Number.isInteger(Number(installationId))
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted">
+        From your app's settings on GitHub (Developer settings → GitHub Apps). The private key (.pem) is sealed in the
+        vault; the rest is non-secret config.
+      </p>
+      <Field label="App ID" row>
+        <Input className="w-56" value={appId} onChange={(e) => setAppId(e.target.value)} />
+      </Field>
+      <Field label="Installation ID" row>
+        <Input className="w-56" type="number" value={installationId} onChange={(e) => setInstallationId(e.target.value)} />
+      </Field>
+      <Field label="App slug (optional)" row>
+        <Input className="w-56" placeholder="for the install/reconfigure link" value={slug} onChange={(e) => setSlug(e.target.value)} />
+      </Field>
+      <Field label="Private key (PEM)">
+        <Textarea
+          mono
+          rows={4}
+          placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;…&#10;-----END RSA PRIVATE KEY-----"
+          value={privateKey}
+          onChange={(e) => setPrivateKey(e.target.value)}
+        />
+      </Field>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="primary"
+          disabled={!ready}
+          loading={connectApp.isPending}
+          onClick={() =>
+            void connectApp.mutateAsync({
+              appId: appId.trim(),
+              privateKey,
+              installationId: Number(installationId),
+              slug: slug.trim() === '' ? undefined : slug.trim(),
+            })
+          }
+        >
+          Link app
+        </Button>
+        {connectApp.data?.status === 'ok' && <FormResult tone="warn">Linked — pick a repo above, then restart to apply.</FormResult>}
+        {connectApp.data?.status === 'invalid' && <FormResult tone="error">{connectApp.data.message ?? 'Invalid input.'}</FormResult>}
       </div>
     </div>
   )
@@ -497,6 +622,7 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
   const connect = useSupabaseConnect()
   const disconnect = useDisconnectConnection()
   const [advanced, setAdvanced] = useState(false)
+  const [showSetup, setShowSetup] = useState(false)
 
   if (configured) {
     return (
@@ -537,16 +663,18 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
   return (
     <Section title="Account data (L2)" hint="Let the agent read a verified customer's account row to explain account-state issues.">
       <div className="space-y-3">
-        {clientConfigured ? (
-          <Button variant="primary" loading={connect.isPending} onClick={() => connect.mutate()}>
+        <div className="space-y-1">
+          <Button
+            variant="primary"
+            loading={connect.isPending}
+            onClick={() => (clientConfigured ? connect.mutate() : setShowSetup(true))}
+          >
             Connect Supabase
           </Button>
-        ) : (
-          <Callout tone="info">
-            Set <span className="font-mono">SUPABASE_OAUTH_CLIENT_ID</span> + <span className="font-mono">SUPABASE_OAUTH_CLIENT_SECRET</span>{' '}
-            under Settings → Secrets to enable one-click Supabase connect — or use a connection string below.
-          </Callout>
-        )}
+          {!clientConfigured && (
+            <p className="text-xs text-muted">First time? We&apos;ll walk you through the one-time setup.</p>
+          )}
+        </div>
         <Disclosure label="Use a connection string / manual setup" open={advanced} onToggle={() => setAdvanced(!advanced)}>
           <PostgresUrlForm />
           <div className="border-t-2 border-border pt-3">
@@ -554,6 +682,45 @@ function AccountDataCard({ data }: { data: EffectiveConfigView }) {
           </div>
         </Disclosure>
       </div>
+
+      <Modal
+        open={showSetup}
+        title="Connect Supabase: one-time setup"
+        onClose={() => setShowSetup(false)}
+        footer={
+          <>
+            <LinkButton to="/settings/secrets" variant="primary">
+              Go to Secrets
+            </LinkButton>
+            <Button onClick={() => setShowSetup(false)}>Close</Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <p>One-click connect uses a Supabase OAuth app. Register it once and this button takes you straight through next time.</p>
+          <ol className="ml-4 list-decimal space-y-2">
+            <li>
+              In Supabase, open <span className="font-mono">Organization settings → OAuth Apps</span> and add an application.
+            </li>
+            <li>
+              Set its redirect URL to:
+              <CodeBlock>{`${window.location.origin}/admin/connect/supabase/callback`}</CodeBlock>
+            </li>
+            <li>
+              Copy the app&apos;s <strong>Client ID</strong> and <strong>Client secret</strong>.
+            </li>
+            <li>
+              In <span className="font-mono">Settings → Secrets</span>, set{' '}
+              <span className="font-mono">SUPABASE_OAUTH_CLIENT_ID</span> and{' '}
+              <span className="font-mono">SUPABASE_OAUTH_CLIENT_SECRET</span>.
+            </li>
+            <li>
+              Come back here and click <strong>Connect Supabase</strong>.
+            </li>
+          </ol>
+          <Callout tone="info">Prefer not to use OAuth? Close this and use the manual setup option below.</Callout>
+        </div>
+      </Modal>
     </Section>
   )
 }

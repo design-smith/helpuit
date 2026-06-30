@@ -677,6 +677,65 @@ export function useGithubConnect() {
   })
 }
 
+/**
+ * Reuse the App this deployment already created: navigate to ITS install/configure
+ * page (no new App). Falls back to creating one (manifest flow) if none exists yet.
+ */
+export function useGithubInstall() {
+  const connect = useGithubConnect()
+  return useMutation({
+    mutationFn: async () => {
+      const { url } = await api<{ url: string | null }>('/admin/connect/github/install')
+      if (url === null) {
+        await connect.mutateAsync()
+        return
+      }
+      window.location.assign(url)
+    },
+  })
+}
+
+export interface GithubRepoChoice {
+  owner: string
+  repo: string
+  fullName: string
+}
+
+/** The repositories the connected GitHub App installation can access (the repo picker). */
+export const useGithubRepos = (enabled: boolean) =>
+  useQuery({
+    queryKey: ['github', 'repos'],
+    queryFn: () => api<{ items: GithubRepoChoice[] }>('/admin/connect/github/repos').then((r) => r.items),
+    enabled,
+  })
+
+/** Record the operator's explicit repo pick (restart-applied). */
+export function useSelectGithubRepo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { owner: string; repo: string }) =>
+      apiSoft<{ status: string }>('/admin/connect/github/select-repo', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['config'] })
+      void qc.invalidateQueries({ queryKey: ['restart-status'] })
+    },
+  })
+}
+
+/** Link an externally-created GitHub App by its credentials (App id + private key + installation id). */
+export function useConnectGithubApp() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { appId: string; privateKey: string; installationId: number; slug?: string }) =>
+      apiSoft<{ status: string; message?: string }>('/admin/connect/github/app', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['config'] })
+      void qc.invalidateQueries({ queryKey: ['restart-status'] })
+      void qc.invalidateQueries({ queryKey: ['github', 'repos'] })
+    },
+  })
+}
+
 // ---- Supabase connect (L2 account data) ----
 
 export interface SupabaseProject {

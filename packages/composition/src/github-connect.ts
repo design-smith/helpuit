@@ -68,54 +68,79 @@ export class GitHubConnectionService {
   }
 
   /**
-   * Record the installation and auto-resolve the connected repo from it (the repo
-   * the operator granted). Best-effort: if resolution fails, the installation id is
-   * still stored. The App private key is read from the vault (stored during the
-   * preceding manifest exchange).
+   * Record the installation id. The repo is NOT auto-picked — the operator chooses
+   * the exact one via {@link listRepos} + {@link selectRepo}, so a multi-repo
+   * installation doesn't silently bind to whichever repo happens to be first.
    */
-  async completeInstall(installationId: number): Promise<{ owner?: string; repo?: string }> {
+  async completeInstall(installationId: number): Promise<void> {
     const prev = ((await this.deps.configStore.get('github'))?.value as Record<string, unknown>) ?? {}
-    const appId = typeof prev.appId === 'string' ? prev.appId : undefined
-    const privateKey = (await this.deps.vault.openAll()).secrets[GITHUB_APP_PRIVATE_KEY] ?? ''
-
-    let owner: string | undefined
-    let repo: string | undefined
-    if (appId !== undefined && privateKey !== '') {
-      try {
-        const auth = new GitHubAppAuth({
-          appId,
-          privateKey,
-          installationId,
-          apiBaseUrl: this.deps.apiBaseUrl,
-          fetchImpl: this.deps.fetchImpl,
-        })
-        const options: GitHubOptions = {
-          owner: '',
-          repo: '',
-          token: '',
-          getToken: () => auth.getToken(),
-          apiBaseUrl: this.deps.apiBaseUrl,
-        }
-        const result = (await githubRequest(options, 'GET', '/installation/repositories')) as {
-          repositories?: Array<{ name?: string; owner?: { login?: string } }>
-        }
-        const first = result.repositories?.[0]
-        owner = first?.owner?.login
-        repo = first?.name
-      } catch {
-        /* best-effort — keep the installation even if repo resolution fails */
-      }
-    }
-
-    await this.deps.configStore.put('github', {
-      ...prev,
-      installationId,
-      auth: 'app',
-      ...(owner !== undefined ? { owner } : {}),
-      ...(repo !== undefined ? { repo } : {}),
-    })
+    await this.deps.configStore.put('github', { ...prev, installationId, auth: 'app' })
     await this.deps.restartFlag.add('config:github')
     await this.deps.audit.record('github.app.installed', String(installationId))
-    return { owner, repo }
+  }
+
+  /**
+   * The install/configure URL for the App this deployment already created — so
+   * "connect" reuses it instead of creating a new App each time. Undefined when no
+   * App has been created yet (the manifest flow handles first-time creation).
+   */
+  async installUrlForExistingApp(): Promise<string | undefined> {
+    const prev = ((await this.deps.configStore.get('github'))?.value as Record<string, unknown>) ?? {}
+    const slug = typeof prev.slug === 'string' && prev.slug !== '' ? prev.slug : undefined
+    return slug !== undefined ? `https://github.com/apps/${slug}/installations/new` : undefined
+  }
+
+  /**
+   * Link an externally-created GitHub App by its credentials (an alternative to the
+   * manifest flow, for an App made outside Helpuit). Seals the private key in the
+   * vault; stores the non-secret app id / installation / slug. Restart-applied.
+   */
+  async connectExistingApp(input: { appId: string; privateKey: string; installationId: number; slug?: string }): Promise<void> {
+    await this.deps.vault.set(GITHUB_APP_PRIVATE_KEY, input.privateKey)
+    const prev = ((await this.deps.configStore.get('github'))?.value as Record<string, unknown>) ?? {}
+    await this.deps.configStore.put('github', {
+      ...prev,
+      appId: input.appId,
+      installationId: input.installationId,
+      auth: 'app',
+      ...(input.slug !== undefined && input.slug !== '' ? { slug: input.slug } : {}),
+    })
+    await this.deps.restartFlag.add('config:github')
+    await this.deps.audit.record('github.app.linked', input.appId)
+  }
+
+  /** The repositories the current installation can access — the repo picker's options. */
+  async listRepos(): Promise<Array<{ owner: string; repo: string; fullName: string }>> {
+    const prev = ((await this.deps.configStore.get('github'))?.value as Record<string, unknown>) ?? {}
+    const appId = typeof prev.appId === 'string' ? prev.appId : undefined
+    const installationId = typeof prev.installationId === 'number' ? prev.installationId : undefined
+    const privateKey = (await this.deps.vault.openAll()).secrets[GITHUB_APP_PRIVATE_KEY] ?? ''
+    if (appId === undefined || installationId === undefined || privateKey === '') return []
+
+    const auth = new GitHubAppAuth({ appId, privateKey, installationId, apiBaseUrl: this.deps.apiBaseUrl, fetchImpl: this.deps.fetchImpl })
+    const options: GitHubOptions = {
+      owner: '',
+      repo: '',
+      token: '',
+      getToken: () => auth.getToken(),
+      apiBaseUrl: this.deps.apiBaseUrl,
+      fetchImpl: this.deps.fetchImpl,
+    }
+    const result = (await githubRequest(options, 'GET', '/installation/repositories')) as {
+      repositories?: Array<{ name?: string; owner?: { login?: string } }>
+    }
+    return (result.repositories ?? []).flatMap((r) =>
+      r.owner?.login !== undefined && r.name !== undefined
+        ? [{ owner: r.owner.login, repo: r.name, fullName: `${r.owner.login}/${r.name}` }]
+        : [],
+    )
+  }
+
+  /** Set the connected repo to the operator's explicit pick. Restart-applied. */
+  async selectRepo(owner: string, repo: string): Promise<void> {
+    const prev = ((await this.deps.configStore.get('github'))?.value as Record<string, unknown>) ?? {}
+    await this.deps.configStore.put('github', { ...prev, owner, repo, auth: 'app' })
+    await this.deps.restartFlag.add('config:github')
+    await this.deps.audit.record('github.repo.selected', `${owner}/${repo}`)
   }
 }

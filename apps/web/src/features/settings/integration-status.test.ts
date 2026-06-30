@@ -43,6 +43,16 @@ describe('integrationStatuses', () => {
     expect(byId.llm).toMatchObject({ connected: true, enabled: true, account: 'anthropic', access: 'claude' })
   })
 
+  it('treats GitHub as connected only once a repo is selected (app key set but no repo → not connected)', () => {
+    const noRepo: EffectiveConfigView = {
+      ...view,
+      config: { ...view.config, github: { owner: 'acme' } }, // installed, repo not yet picked
+      secrets: [{ key: 'GITHUB_APP_PRIVATE_KEY', set: true, required: true, source: 'vault' }],
+    }
+    const gh = integrationStatuses(noRepo).find((s) => s.id === 'github')!
+    expect(gh.connected).toBe(false)
+  })
+
   it('defaults enabled to true when the integrations map is absent (back-compat)', () => {
     const [gh] = integrationStatuses({ ...view, config: { ...view.config, integrations: undefined } })
     expect(gh!.enabled).toBe(true)

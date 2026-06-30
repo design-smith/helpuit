@@ -412,6 +412,55 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
     return reply.redirect('/connections?github=connected')
   })
 
+  // Reuse the App this deployment already created: returns its install URL (with a
+  // fresh state) so "connect" never creates a second App. Null when no App exists yet.
+  app.get(
+    '/admin/connect/github/install',
+    guard(async () => {
+      const base = await api.githubConnect.installUrlForExistingApp()
+      if (base === undefined) return { url: null }
+      const state = signSession(token, now() + SESSION_TTL_MS)
+      return { url: `${base}?state=${encodeURIComponent(state)}` }
+    }),
+  )
+
+  // The installation's repositories — the repo picker's options.
+  app.get('/admin/connect/github/repos', guard(async () => ({ items: await api.githubConnect.listRepos() })))
+
+  // Record the operator's explicit repo pick.
+  app.post(
+    '/admin/connect/github/select-repo',
+    guard(async (request, reply) => {
+      const body = request.body as { owner?: unknown; repo?: unknown } | undefined
+      const owner = typeof body?.owner === 'string' ? body.owner : ''
+      const repo = typeof body?.repo === 'string' ? body.repo : ''
+      if (owner === '' || repo === '') {
+        reply.code(400)
+        return { status: 'invalid', message: 'owner and repo are required' }
+      }
+      await api.githubConnect.selectRepo(owner, repo)
+      return { status: 'ok' }
+    }),
+  )
+
+  // Link an externally-created GitHub App by its credentials.
+  app.post(
+    '/admin/connect/github/app',
+    guard(async (request, reply) => {
+      const body = request.body as { appId?: unknown; privateKey?: unknown; installationId?: unknown; slug?: unknown } | undefined
+      const appId = typeof body?.appId === 'string' ? body.appId.trim() : ''
+      const privateKey = typeof body?.privateKey === 'string' ? body.privateKey : ''
+      const installationId = Number(body?.installationId)
+      const slug = typeof body?.slug === 'string' && body.slug.trim() !== '' ? body.slug.trim() : undefined
+      if (appId === '' || privateKey === '' || !Number.isInteger(installationId)) {
+        reply.code(400)
+        return { status: 'invalid', message: 'appId, privateKey, and installationId are required' }
+      }
+      await api.githubConnect.connectExistingApp({ appId, privateKey, installationId, slug })
+      return { status: 'ok' }
+    }),
+  )
+
   // ---- connect Supabase (OAuth, for L2 account data) ----
   const supabase = api.supabaseConnect
   app.get(

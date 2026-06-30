@@ -1,3 +1,8 @@
+type FetchLike = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
+) => Promise<{ ok: boolean; status?: number; statusText?: string; json: () => Promise<unknown>; text?: () => Promise<string> }>
+
 export interface GitHubOptions {
   owner: string
   repo: string
@@ -12,11 +17,13 @@ export interface GitHubOptions {
   apiBaseUrl?: string
   /** The production ref (branch/sha) used for repo reads. */
   ref?: string
+  /** Injectable HTTP for tests; defaults to global fetch. */
+  fetchImpl?: FetchLike
 }
 
 const DEFAULT_API = 'https://api.github.com'
 
-/** Single authenticated GitHub REST call. `apiBaseUrl` makes it testable + Enterprise-ready. */
+/** Single authenticated GitHub REST call. `apiBaseUrl`/`fetchImpl` make it testable + Enterprise-ready. */
 export async function githubRequest(
   options: GitHubOptions,
   method: 'GET' | 'POST',
@@ -31,13 +38,14 @@ export async function githubRequest(
   }
   if (body !== undefined) headers['content-type'] = 'application/json'
 
-  const res = await fetch(`${options.apiBaseUrl ?? DEFAULT_API}${path}`, {
+  const fetchImpl = options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike)
+  const res = await fetchImpl(`${options.apiBaseUrl ?? DEFAULT_API}${path}`, {
     method,
     headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })
   if (!res.ok) {
-    throw new Error(`GitHub ${method} ${path} failed: ${res.status} ${res.statusText}`)
+    throw new Error(`GitHub ${method} ${path} failed: ${res.status ?? '?'} ${res.statusText ?? ''}`)
   }
   return res.json()
 }
