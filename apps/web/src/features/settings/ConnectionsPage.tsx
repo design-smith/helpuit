@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { Github } from 'lucide-react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { Github, ChevronDown } from 'lucide-react'
 import {
   useApplySection,
   useEffectiveConfig,
@@ -51,6 +51,185 @@ import {
 } from '../../components/ui'
 import { parseColumnList } from './scaffold-form'
 import { integrationStatuses, availableLlmProviders, type IntegrationStatus } from './integration-status'
+
+/** Searchable combobox drop-in for <Select> — filters options as you type. */
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder = 'Select…',
+  loading = false,
+  className = '',
+}: {
+  options: Array<{ value: string; label: string }>
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  loading?: boolean
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const selected = options.find((o) => o.value === value)
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className={cx('relative', className)}>
+      <button
+        type="button"
+        className="input flex w-full cursor-pointer items-center justify-between gap-2 text-left"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={selected ? 'text-foreground' : 'text-muted'}>
+          {loading ? 'Loading…' : (selected?.label ?? placeholder)}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full rounded-base border-2 border-border bg-background shadow-shadow">
+          <div className="p-2">
+            <input
+              autoFocus
+              className="input w-full text-sm"
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="max-h-52 overflow-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted">No results</p>
+            ) : (
+              filtered.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={cx(
+                    'w-full px-3 py-2 text-left text-sm transition-colors hover:bg-secondary-background',
+                    o.value === value && 'bg-main text-main-foreground',
+                  )}
+                  onClick={() => {
+                    onChange(o.value)
+                    setQuery('')
+                    setOpen(false)
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Column names the agent almost always needs — pre-selected when a table is first picked. */
+const SMART_COLUMN_RE =
+  /^(id|user_id|email|plan|status|role|tier|type|subscription|subscription_status|created_at|updated_at|name|first_name|last_name|account_id|customer_id|organisation_id|organization_id|is_active|trial_ends_at|cancelled_at)$/i
+
+/**
+ * Multi-select column picker rendered as a button → dropdown with checkboxes.
+ * Keeps the flat-checkbox clutter off the page; handles large tables via search.
+ */
+function ColumnPicker({
+  columns,
+  selected,
+  onChange,
+  userColumn,
+}: {
+  columns: string[]
+  selected: string[]
+  onChange: (cols: string[]) => void
+  userColumn: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const allSelected = columns.length > 0 && selected.length === columns.length
+  const filtered = columns.filter((c) => c.toLowerCase().includes(query.toLowerCase()))
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const toggle = (c: string) =>
+    onChange(selected.includes(c) ? selected.filter((x) => x !== c) : [...selected, c])
+
+  const label =
+    selected.length === 0
+      ? 'Select columns…'
+      : selected.length === columns.length
+        ? 'All columns'
+        : `${selected.length} of ${columns.length} columns`
+
+  return (
+    <div ref={ref} className="relative w-64">
+      <button
+        type="button"
+        className="input flex w-full cursor-pointer items-center justify-between gap-2 text-left"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={selected.length === 0 ? 'text-muted' : 'text-foreground'}>{label}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full rounded-base border-2 border-border bg-background shadow-shadow">
+          <div className="p-2">
+            <input
+              autoFocus
+              className="input w-full text-sm"
+              placeholder="Search columns…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="border-t-2 border-border px-3 py-2">
+            <Checkbox
+              label={<span className="text-sm font-base">All columns</span>}
+              checked={allSelected}
+              onChange={() => onChange(allSelected ? [] : [...columns])}
+            />
+          </div>
+          <div className="max-h-52 overflow-auto border-t-2 border-border">
+            {filtered.map((c) => (
+              <div key={c} className="px-3 py-1 hover:bg-secondary-background">
+                <Checkbox
+                  label={
+                    <span className="font-mono text-xs">
+                      {c}
+                      {c === userColumn && <span className="ml-1 text-muted">(user-id)</span>}
+                    </span>
+                  }
+                  checked={selected.includes(c)}
+                  onChange={() => toggle(c)}
+                />
+              </div>
+            ))}
+            {filtered.length === 0 && <p className="px-3 py-2 text-sm text-muted">No results</p>}
+          </div>
+          <div className="border-t-2 border-border px-3 py-2 text-xs text-muted">
+            {selected.length} of {columns.length} selected
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function useSectionForm(section: string) {
   const apply = useApplySection()
@@ -223,22 +402,16 @@ function GithubAdvanced({ github }: { github: any }) {
             <FormResult tone="warn">No repositories granted yet — use “Add / reconfigure repositories” and grant access.</FormResult>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <Select
+              <SearchableSelect
                 className="w-72"
+                options={repos.data.map((r) => ({ value: r.fullName, label: r.fullName }))}
                 value={repos.data.some((r) => r.fullName === currentRepo) ? currentRepo : ''}
-                disabled={selectRepo.isPending}
-                onChange={(e) => {
-                  const choice = repos.data.find((r) => r.fullName === e.target.value)
+                placeholder="Select a repository…"
+                onChange={(v) => {
+                  const choice = repos.data.find((r) => r.fullName === v)
                   if (choice !== undefined) void selectRepo.mutateAsync({ owner: choice.owner, repo: choice.repo })
                 }}
-              >
-                <option value="">Select a repository…</option>
-                {repos.data.map((r) => (
-                  <option key={r.fullName} value={r.fullName}>
-                    {r.fullName}
-                  </option>
-                ))}
-              </Select>
+              />
               {selectRepo.isPending && <Spinner />}
               {selectRepo.data?.status === 'ok' && <FormResult tone="warn">Saved — restart to apply</FormResult>}
             </div>
@@ -693,32 +866,35 @@ function SupabaseProjectPicker() {
   const tables = useSupabaseTables(ref, ref !== '')
   const cols = useSupabaseColumns(ref, table, table !== '')
 
+  // Auto-select the minimum useful columns when a table's schema first loads.
+  useEffect(() => {
+    if (cols.data && cols.data.length > 0 && columns.length === 0) {
+      const smart = cols.data.filter((c) => SMART_COLUMN_RE.test(c))
+      setColumns(smart.length > 0 ? smart : cols.data.slice(0, Math.min(5, cols.data.length)))
+    }
+  }, [cols.data])
+
   if (projects.isPending) return <CenteredSpinner />
   if (projects.isError) return <ErrorState error={projects.error} onRetry={() => void projects.refetch()} />
 
-  const toggleCol = (c: string) =>
-    setColumns((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
+  const projectOptions = projects.data.map((p) => ({ value: p.ref, label: `${p.name} (${p.ref})` }))
+  const tableOptions = (tables.data ?? []).map((t) => ({ value: t, label: t }))
+  const colOptions = (cols.data ?? []).map((c) => ({ value: c, label: c }))
 
   return (
     <div className="space-y-3">
       <Field label="Project" row>
-        <Select
+        <SearchableSelect
           className="w-64"
+          options={projectOptions}
           value={ref}
-          onChange={(e) => {
-            setRef(e.target.value)
+          onChange={(v) => {
+            setRef(v)
             setTable('')
             setUserColumn('')
             setColumns([])
           }}
-        >
-          <option value="">Select…</option>
-          {projects.data.map((p) => (
-            <option key={p.ref} value={p.ref}>
-              {p.name} ({p.ref})
-            </option>
-          ))}
-        </Select>
+        />
       </Field>
       {ref !== '' && (tables.isError || cols.isError) && (
         <Callout tone="warn">
@@ -730,44 +906,38 @@ function SupabaseProjectPicker() {
       )}
       {ref !== '' && (
         <Field label="Table" row>
-          <Select
+          <SearchableSelect
             className="w-64"
+            options={tableOptions}
             value={table}
-            onChange={(e) => {
-              setTable(e.target.value)
+            loading={tables.isPending}
+            onChange={(v) => {
+              setTable(v)
               setUserColumn('')
               setColumns([])
             }}
-          >
-            <option value="">{tables.isPending ? 'Loading…' : 'Select…'}</option>
-            {(tables.data ?? []).map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </Select>
+          />
         </Field>
       )}
       {table !== '' && (
         <>
           <Field label="User-id column" row>
-            <Select className="w-64" value={userColumn} onChange={(e) => setUserColumn(e.target.value)}>
-              <option value="">{cols.isPending ? 'Loading…' : 'Select…'}</option>
-              {(cols.data ?? []).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              className="w-64"
+              options={colOptions}
+              value={userColumn}
+              loading={cols.isPending}
+              onChange={setUserColumn}
+            />
           </Field>
-          <div>
-            <p className="mb-1 text-xs uppercase tracking-wide text-muted">Readable columns</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {(cols.data ?? []).map((c) => (
-                <Checkbox key={c} label={c} checked={columns.includes(c)} onChange={() => toggleCol(c)} />
-              ))}
-            </div>
-          </div>
+          <Field label="Readable columns" row>
+            <ColumnPicker
+              columns={cols.data ?? []}
+              selected={columns}
+              onChange={setColumns}
+              userColumn={userColumn}
+            />
+          </Field>
           <Button
             variant="primary"
             disabled={userColumn === '' || columns.length === 0}
