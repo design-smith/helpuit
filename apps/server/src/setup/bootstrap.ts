@@ -6,8 +6,10 @@ import { readFileIfExists, writeEnvFileWithBackup, ensureConfigYaml } from './io
 
 /** The launch-critical answers the wizard collects. All optional — blank = leave alone. */
 export interface BootstrapAnswers {
-  /** Use the built-in Cloudflare tunnel for the public URL (persists HELPUIT_TUNNEL=1). Wins over publicUrl. */
+  /** Use the built-in Cloudflare quick tunnel (persists HELPUIT_TUNNEL=1). Superseded by cloudflareToken. */
   useTunnel?: boolean
+  /** Cloudflare named-tunnel token (persists CLOUDFLARE_TUNNEL_TOKEN). Requires publicUrl. Wins over useTunnel. */
+  cloudflareToken?: string
   publicUrl?: string
   databaseUrl?: string
   databaseAuthToken?: string
@@ -78,10 +80,21 @@ export function planBootstrapEnv(
 
   if (!blank(answers.port)) updates.PORT = answers.port!.trim()
 
-  // Reachability: the built-in tunnel (persisted as HELPUIT_TUNNEL=1 so `pnpm start`
-  // auto-tunnels, no flag) OR an explicit domain. The tunnel choice wins.
-  if (answers.useTunnel) updates.HELPUIT_TUNNEL = '1'
-  else if (!blank(answers.publicUrl)) updates.HELPUIT_PUBLIC_URL = answers.publicUrl!.trim()
+  // Reachability priority: named tunnel (token) > quick tunnel > explicit domain.
+  if (!blank(answers.cloudflareToken)) {
+    if (blank(answers.publicUrl)) {
+      throw new Error(
+        'A Cloudflare tunnel token requires a stable public URL. ' +
+          'Set HELPUIT_PUBLIC_URL to your tunnel hostname (e.g. https://helpuit.example.com).',
+      )
+    }
+    updates.CLOUDFLARE_TUNNEL_TOKEN = answers.cloudflareToken!.trim()
+    updates.HELPUIT_PUBLIC_URL = answers.publicUrl!.trim()
+  } else if (answers.useTunnel) {
+    updates.HELPUIT_TUNNEL = '1'
+  } else if (!blank(answers.publicUrl)) {
+    updates.HELPUIT_PUBLIC_URL = answers.publicUrl!.trim()
+  }
 
   if (!blank(answers.databaseUrl)) {
     const url = answers.databaseUrl!.trim()
@@ -125,8 +138,10 @@ export interface RunBootstrapResult {
   warnings: string[]
   missing: { secrets: string[]; structural: string[] }
   publicUrl?: string
-  /** The operator chose the built-in tunnel (HELPUIT_TUNNEL=1) for the public URL. */
+  /** The operator chose the built-in quick tunnel (HELPUIT_TUNNEL=1) for the public URL. */
   tunnelEnabled: boolean
+  /** The operator configured a permanent Cloudflare named tunnel (CLOUDFLARE_TUNNEL_TOKEN set). */
+  namedTunnelEnabled: boolean
   port: number
 }
 
@@ -176,6 +191,7 @@ export async function runBootstrap(options: RunBootstrapOptions): Promise<RunBoo
     missing: splitMissing(effective.missingSecrets),
     publicUrl: effective.config.runtime.publicUrl,
     tunnelEnabled: plan.env.HELPUIT_TUNNEL === '1',
+    namedTunnelEnabled: (plan.env.CLOUDFLARE_TUNNEL_TOKEN ?? '') !== '',
     port: effective.config.runtime.port,
   }
 }

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { bin, install, Tunnel } from 'cloudflared'
 import type { TunnelHandle } from './tunnel.js'
 
@@ -41,6 +42,45 @@ export async function startCloudflaredTunnel(port: number): Promise<TunnelHandle
     url,
     stop: async () => {
       tunnel.stop()
+    },
+  }
+}
+
+const NAMED_TUNNEL_STARTUP_MS = 3_000
+
+/**
+ * Start a Cloudflare **named tunnel** using a token from the Zero Trust dashboard.
+ * Unlike a quick tunnel, the public hostname is pre-configured in Cloudflare — so
+ * the URL never changes between restarts. The token is passed via `--token` and the
+ * caller supplies the stable `publicUrl` (from `HELPUIT_PUBLIC_URL`).
+ *
+ * Resolves once the process has been alive for a few seconds (named tunnels have no
+ * "ready" event), or rejects if it exits immediately (bad token, network error).
+ */
+export async function startNamedCloudflaredTunnel(token: string, publicUrl: string): Promise<TunnelHandle> {
+  if (!existsSync(bin)) {
+    console.log('Downloading the cloudflared tunnel binary (first run only)…')
+    await install(bin)
+  }
+
+  const proc = spawn(bin, ['tunnel', 'run', '--token', token], { stdio: 'pipe' })
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, NAMED_TUNNEL_STARTUP_MS)
+    proc.once('exit', (code) => {
+      clearTimeout(timer)
+      reject(new Error(`cloudflared named tunnel exited early (code ${code ?? 'null'}) — check your CLOUDFLARE_TUNNEL_TOKEN`))
+    })
+    proc.once('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+  })
+
+  return {
+    url: publicUrl,
+    stop: async () => {
+      proc.kill('SIGTERM')
     },
   }
 }

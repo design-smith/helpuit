@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tunnelRequested, normalizePublicUrl, tunnelPort } from './tunnel.js'
+import { tunnelRequested, normalizePublicUrl, tunnelPort, namedTunnelToken } from './tunnel.js'
 
 describe('tunnelRequested', () => {
   it('is true when --tunnel is passed', () => {
@@ -34,5 +34,23 @@ describe('tunnelPort', () => {
 
   it('falls back to 3000 for a non-integer PORT', () => {
     expect(tunnelPort({ PORT: 'abc' })).toBe(3000)
+  })
+})
+
+describe('namedTunnelToken', () => {
+  it('returns the token when set', () => {
+    expect(namedTunnelToken({ CLOUDFLARE_TUNNEL_TOKEN: 'abc123' })).toBe('abc123')
+  })
+
+  it('returns undefined when absent', () => {
+    expect(namedTunnelToken({})).toBeUndefined()
+  })
+
+  it('returns undefined for a blank string', () => {
+    expect(namedTunnelToken({ CLOUDFLARE_TUNNEL_TOKEN: '   ' })).toBeUndefined()
+  })
+
+  it('trims surrounding whitespace', () => {
+    expect(namedTunnelToken({ CLOUDFLARE_TUNNEL_TOKEN: '  tok  ' })).toBe('tok')
   })
 })

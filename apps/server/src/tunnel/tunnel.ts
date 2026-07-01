@@ -14,9 +14,19 @@ export interface TunnelHandle {
 /** Starts a tunnel to the given local port and resolves once a public URL is live. */
 export type TunnelStarter = (port: number) => Promise<TunnelHandle>
 
-/** Did the operator ask for a tunnel — via `--tunnel` or `HELPUIT_TUNNEL=1`? */
+/** Did the operator ask for a quick tunnel — via `--tunnel` or `HELPUIT_TUNNEL=1`? */
 export function tunnelRequested(argv: readonly string[], env: { HELPUIT_TUNNEL?: string }): boolean {
   return argv.includes('--tunnel') || env.HELPUIT_TUNNEL === '1'
+}
+
+/**
+ * Return the named-tunnel token if `CLOUDFLARE_TUNNEL_TOKEN` is set and non-blank,
+ * otherwise undefined. A set token means the operator wants a permanent named tunnel
+ * instead of a random quick-tunnel URL.
+ */
+export function namedTunnelToken(env: { CLOUDFLARE_TUNNEL_TOKEN?: string }): string | undefined {
+  const t = env.CLOUDFLARE_TUNNEL_TOKEN?.trim()
+  return t !== undefined && t !== '' ? t : undefined
 }
 
 /** Normalize a tunnel URL for use as HELPUIT_PUBLIC_URL (trim, drop trailing slashes). */

@@ -18,18 +18,30 @@ async function prompt(existing: EnvMap): Promise<BootstrapAnswers> {
   const rl = createInterface({ input: stdin, output: stdout })
   try {
     console.log('\nHow will Helpuit be reachable from the internet? Chatwoot & GitHub webhooks and')
-    console.log('callbacks need a public URL. Pick one:')
-    console.log('  1) Cloudflare tunnel — recommended for local. `pnpm start` opens a public URL')
-    console.log('     automatically every run; nothing to install or configure.')
-    console.log('  2) My own domain — for a deployed instance (e.g. https://helpuit.yourcompany.com).')
-    const choice = await ask(rl, 'Choose 1 (tunnel) or 2 (domain)', existing.HELPUIT_PUBLIC_URL ? '2' : '1')
+    console.log('OAuth callbacks need a public URL. Pick one:')
+    console.log('  1) Cloudflare quick tunnel  — random URL, no account needed (best for local dev).')
+    console.log('     `pnpm start` opens a public URL automatically every run.')
+    console.log('  2) Cloudflare named tunnel  — permanent URL that never changes between restarts.')
+    console.log('     Requires a free Cloudflare account. Fixes OAuth flows (GitHub App, Supabase).')
+    console.log('  3) My own domain            — for a deployed instance or reserved tunnel URL.')
+    const defaultChoice = existing.CLOUDFLARE_TUNNEL_TOKEN ? '2' : existing.HELPUIT_PUBLIC_URL ? '3' : '1'
+    const choice = await ask(rl, 'Choose 1, 2, or 3', defaultChoice)
     let useTunnel = false
+    let cloudflareToken = ''
     let publicUrl = ''
     if (choice.trim().startsWith('2')) {
+      console.log('  → Named tunnel: get your token from Cloudflare Zero Trust → Networks → Tunnels.')
+      cloudflareToken = await ask(rl, 'CLOUDFLARE_TUNNEL_TOKEN', existing.CLOUDFLARE_TUNNEL_TOKEN ?? '')
+      publicUrl = await ask(
+        rl,
+        'HELPUIT_PUBLIC_URL (your tunnel hostname, e.g. https://helpuit.example.com)',
+        existing.HELPUIT_PUBLIC_URL ?? '',
+      )
+    } else if (choice.trim().startsWith('3')) {
       publicUrl = await ask(rl, 'HELPUIT_PUBLIC_URL', existing.HELPUIT_PUBLIC_URL ?? '')
     } else {
       useTunnel = true
-      console.log('  → Cloudflare tunnel selected. `pnpm start` will open it and set the URL for you.')
+      console.log('  → Quick tunnel selected. `pnpm start` will open it and set the URL for you.')
     }
 
     console.log('\nDatabase — leave the default for a zero-config local SQLite file, or use a remote')
@@ -46,7 +58,7 @@ async function prompt(existing: EnvMap): Promise<BootstrapAnswers> {
     const nodeEnv = await ask(rl, '\nNODE_ENV', existing.NODE_ENV ?? 'development')
     const port = await ask(rl, 'PORT', existing.PORT ?? '3000')
 
-    return { useTunnel, publicUrl, databaseUrl, databaseAuthToken, nodeEnv, port }
+    return { useTunnel, cloudflareToken, publicUrl, databaseUrl, databaseAuthToken, nodeEnv, port }
   } finally {
     rl.close()
   }
@@ -69,8 +81,11 @@ function handoff(result: RunBootstrapResult): void {
 
   console.log('\n  Next:')
   console.log('    1. pnpm --filter @helpuit/web build       (build the console UI — once)')
-  if (result.tunnelEnabled) {
-    console.log('    2. pnpm start                             (opens the Cloudflare tunnel automatically)')
+  if (result.namedTunnelEnabled) {
+    console.log('    2. pnpm start                             (connects to your permanent Cloudflare tunnel)')
+    console.log(`    3. open ${result.publicUrl}  and log in with the token above`)
+  } else if (result.tunnelEnabled) {
+    console.log('    2. pnpm start                             (opens the Cloudflare quick tunnel automatically)')
     console.log('    3. open the tunnel URL it prints  and log in with the token above')
   } else if (result.publicUrl !== undefined && result.publicUrl !== '') {
     console.log('    2. pnpm start')
@@ -110,6 +125,7 @@ async function main(): Promise<void> {
   const answers: BootstrapAnswers = nonInteractive
     ? {
         useTunnel: process.env.HELPUIT_TUNNEL === '1',
+        cloudflareToken: process.env.CLOUDFLARE_TUNNEL_TOKEN,
         publicUrl: process.env.HELPUIT_PUBLIC_URL,
         databaseUrl: process.env.DATABASE_URL,
         databaseAuthToken: process.env.DATABASE_AUTH_TOKEN,

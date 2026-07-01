@@ -2,14 +2,43 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { runSupervisor, type TunnelLease } from './supervisor-loop.js'
-import { tunnelRequested, tunnelPort, normalizePublicUrl } from './tunnel/tunnel.js'
+import { tunnelRequested, tunnelPort, normalizePublicUrl, namedTunnelToken } from './tunnel/tunnel.js'
 
 // The server entrypoint we supervise (run under tsx, same as `node --import tsx`).
 const mainPath = resolve(dirname(fileURLToPath(import.meta.url)), 'main.ts')
 
 async function main(): Promise<void> {
-  const withTunnel = tunnelRequested(process.argv, process.env)
-  if (withTunnel) console.log('Opening a Cloudflare tunnel (downloads cloudflared on first run)…')
+  const token = namedTunnelToken(process.env)
+  const withQuickTunnel = tunnelRequested(process.argv, process.env)
+
+  let startTunnel: (() => Promise<TunnelLease>) | undefined
+
+  if (token !== undefined) {
+    // Named tunnel: permanent URL configured in Cloudflare Zero Trust dashboard.
+    // HELPUIT_PUBLIC_URL must be set to the stable hostname.
+    const publicUrl = process.env.HELPUIT_PUBLIC_URL?.trim()
+    if (!publicUrl) {
+      console.error(
+        'CLOUDFLARE_TUNNEL_TOKEN is set but HELPUIT_PUBLIC_URL is missing.\n' +
+          'Set HELPUIT_PUBLIC_URL to your tunnel hostname (e.g. https://helpuit.example.com).',
+      )
+      process.exit(1)
+    }
+    console.log(`Starting permanent Cloudflare named tunnel → ${publicUrl}`)
+    startTunnel = async (): Promise<TunnelLease> => {
+      const { startNamedCloudflaredTunnel } = await import('./tunnel/cloudflared-tunnel.js')
+      const handle = await startNamedCloudflaredTunnel(token, normalizePublicUrl(publicUrl))
+      return { url: handle.url, stop: handle.stop }
+    }
+  } else if (withQuickTunnel) {
+    // Quick tunnel: random URL, no Cloudflare account needed.
+    console.log('Opening a Cloudflare quick tunnel (downloads cloudflared on first run)…')
+    startTunnel = async (): Promise<TunnelLease> => {
+      const { startCloudflaredTunnel } = await import('./tunnel/cloudflared-tunnel.js')
+      const handle = await startCloudflaredTunnel(tunnelPort(process.env))
+      return { url: normalizePublicUrl(handle.url), stop: handle.stop }
+    }
+  }
 
   let child: ChildProcess | undefined
   let stopping = false
@@ -21,13 +50,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', forward)
 
   const code = await runSupervisor({
-    startTunnel: withTunnel
-      ? async (): Promise<TunnelLease> => {
-          const { startCloudflaredTunnel } = await import('./tunnel/cloudflared-tunnel.js')
-          const handle = await startCloudflaredTunnel(tunnelPort(process.env))
-          return { url: normalizePublicUrl(handle.url), stop: handle.stop }
-        }
-      : undefined,
+    startTunnel,
     spawnChild: (env) =>
       new Promise<number>((resolveCode, rejectSpawn) => {
         const proc = spawn(process.execPath, ['--import', 'tsx', mainPath], {

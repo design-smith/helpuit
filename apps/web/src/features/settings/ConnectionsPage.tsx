@@ -347,6 +347,7 @@ function ExistingAppForm() {
 
 function ChatwootAdvanced({ chatwoot }: { chatwoot: any }) {
   const { save, result, pending } = useSectionForm('chatwoot')
+  const setSecret = useSetSecret()
   const validate = useValidateChatwoot()
   const setup = useSetupChatwoot()
   const [baseUrl, setBaseUrl] = useState<string>(chatwoot?.baseUrl ?? '')
@@ -401,8 +402,14 @@ function ChatwootAdvanced({ chatwoot }: { chatwoot: any }) {
       <Field label="Inbox ID" row>
         <Input className="w-24 text-right" type="number" value={inboxId} onChange={(e) => setInboxId(Number(e.target.value))} />
       </Field>
-      <p className="text-xs text-muted">Save the token under Settings → Secrets (CHATWOOT_API_TOKEN).</p>
-      <SaveRow result={result} pending={pending} onSave={() => save({ baseUrl, accountId, inboxId })} />
+      <SaveRow
+        result={result}
+        pending={pending || setSecret.isPending}
+        onSave={async () => {
+          if (token !== '') await setSecret.mutateAsync({ key: 'CHATWOOT_API_TOKEN', value: token })
+          save({ baseUrl, accountId, inboxId })
+        }}
+      />
       <div className="flex flex-wrap items-center gap-3 border-t-2 border-border pt-3">
         <Button onClick={async () => setSetupResult(await setup.mutateAsync({ baseUrl, token, accountId }))} disabled={token === '' || baseUrl === ''} loading={setup.isPending}>
           Auto-setup bot + webhook
