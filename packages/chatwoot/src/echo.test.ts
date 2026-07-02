@@ -10,7 +10,7 @@ describe('handleInbound', () => {
       client,
     )
     expect(acted).toBe(true)
-    expect(client.replies).toEqual([{ conversationId: 7, content: ECHO_REPLY }])
+    expect(client.replies).toEqual([{ conversationId: '7', content: ECHO_REPLY }])
   })
 
   it('does nothing for an outgoing message', async () => {

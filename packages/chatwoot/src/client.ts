@@ -8,11 +8,14 @@ export interface ConversationMessage {
   at: number
 }
 
-/** Posts replies and private notes back to a Chatwoot conversation (issue 2). */
-export interface ChatwootClient {
-  sendReply(conversationId: number, content: string): Promise<void>
-  sendPrivateNote(conversationId: number, content: string): Promise<void>
+/** Posts replies and private notes back to a support conversation (issue 2). */
+export interface SupportClient {
+  sendReply(conversationId: string, content: string): Promise<void>
+  sendPrivateNote(conversationId: string, content: string): Promise<void>
 }
+
+/** @deprecated Back-compat alias — use {@link SupportClient}. */
+export type ChatwootClient = SupportClient
 
 export interface ChatwootConfig {
   baseUrl: string
@@ -25,7 +28,7 @@ export class HttpChatwootClient implements ChatwootClient {
   constructor(private readonly config: ChatwootConfig) {}
 
   private async postMessage(
-    conversationId: number,
+    conversationId: string,
     content: string,
     isPrivate: boolean,
   ): Promise<void> {
@@ -43,11 +46,11 @@ export class HttpChatwootClient implements ChatwootClient {
     }
   }
 
-  sendReply(conversationId: number, content: string): Promise<void> {
+  sendReply(conversationId: string, content: string): Promise<void> {
     return this.postMessage(conversationId, content, false)
   }
 
-  sendPrivateNote(conversationId: number, content: string): Promise<void> {
+  sendPrivateNote(conversationId: string, content: string): Promise<void> {
     return this.postMessage(conversationId, content, true)
   }
 
@@ -57,7 +60,7 @@ export class HttpChatwootClient implements ChatwootClient {
    * activity. `created_at` is unix seconds → normalized to epoch ms. Empty/activity
    * messages are dropped.
    */
-  async getMessages(conversationId: number): Promise<ConversationMessage[]> {
+  async getMessages(conversationId: string): Promise<ConversationMessage[]> {
     const url = `${this.config.baseUrl}/api/v1/accounts/${this.config.accountId}/conversations/${conversationId}/messages`
     const res = await resilientFetch(url, {
       method: 'GET',
@@ -79,14 +82,14 @@ export class HttpChatwootClient implements ChatwootClient {
 
 /** Records calls instead of hitting the network — for tests and local dev. */
 export class FakeChatwootClient implements ChatwootClient {
-  readonly replies: Array<{ conversationId: number; content: string }> = []
-  readonly notes: Array<{ conversationId: number; content: string }> = []
+  readonly replies: Array<{ conversationId: string; content: string }> = []
+  readonly notes: Array<{ conversationId: string; content: string }> = []
 
-  async sendReply(conversationId: number, content: string): Promise<void> {
+  async sendReply(conversationId: string, content: string): Promise<void> {
     this.replies.push({ conversationId, content })
   }
 
-  async sendPrivateNote(conversationId: number, content: string): Promise<void> {
+  async sendPrivateNote(conversationId: string, content: string): Promise<void> {
     this.notes.push({ conversationId, content })
   }
 }

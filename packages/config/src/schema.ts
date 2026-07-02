@@ -13,12 +13,44 @@ const Tier = z.object({
 export const ModelsConfig = z.object({
   provider: Provider,
   tiers: z.object({ guidance: Tier, reasoning: Tier, vision: Tier }),
+  /**
+   * Embedding model for the semantic knowledge index (docs, issues, cases).
+   * Optional — absent means retrieval stays token-overlap only. Only OpenAI-style
+   * /embeddings providers apply (openai, openai-compatible).
+   */
+  embedding: Tier.optional(),
 })
 
 const Chatwoot = z.object({
   baseUrl: z.string().url(),
   accountId: z.number().int().positive(),
   inboxId: z.number().int().positive(),
+})
+
+const Intercom = z.object({
+  /** The bot/admin teammate id replies post under. */
+  adminId: z.string().min(1),
+  /** Region base URL; defaults to US (https://api.intercom.io). EU/AU variants for data-residency apps. */
+  baseUrl: z.string().url().optional(),
+})
+
+const Freshdesk = z.object({
+  /** The account subdomain, e.g. "acme" for acme.freshdesk.com. Polled (no inbound webhook). */
+  domain: z.string().min(1),
+})
+
+const HubSpot = z.object({
+  /** The actor replies are attributed to, e.g. "A-12345" (an agent) or an app actor. */
+  senderActorId: z.string().min(1),
+  /** API base; defaults to https://api.hubapi.com. */
+  baseUrl: z.string().url().optional(),
+})
+
+const Zendesk = z.object({
+  /** The account subdomain, e.g. "acme" for acme.zendesk.com. */
+  subdomain: z.string().min(1),
+  /** The agent email whose API token authenticates requests (Basic `email/token:token`). */
+  email: z.string().min(1),
 })
 
 const GitHub = z.object({
@@ -188,6 +220,10 @@ export const Integrations = z
   .object({
     github: z.boolean().default(true),
     chatwoot: z.boolean().default(true),
+    intercom: z.boolean().default(true),
+    freshdesk: z.boolean().default(true),
+    hubspot: z.boolean().default(true),
+    zendesk: z.boolean().default(true),
     identity: z.boolean().default(true),
     llm: z.boolean().default(true),
   })
@@ -197,6 +233,14 @@ export type Integrations = z.infer<typeof Integrations>
 /** The structural (non-secret) config loaded from helpuit.config.yaml. */
 export const StructuredConfig = z.object({
   chatwoot: Chatwoot,
+  /** Optional second support platform. Present → an `intercom` connection is wired. */
+  intercom: Intercom.optional(),
+  /** Optional poll-only support platform. Present → a `freshdesk` connection is polled. */
+  freshdesk: Freshdesk.optional(),
+  /** Optional poll-only support platform (HubSpot Conversations). */
+  hubspot: HubSpot.optional(),
+  /** Optional webhook support platform (Zendesk Support). */
+  zendesk: Zendesk.optional(),
   github: GitHub,
   identity: Identity,
   queryRoutes: QueryRoutes.optional(),

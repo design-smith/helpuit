@@ -58,9 +58,9 @@ describe('admin docs API (FCW-04)', () => {
     expect(items.map((d) => d.id)).toContain(created.id)
 
     // It is ingested into the SAME live index L1 retrieves from — so it grounds
-    // answers immediately, with no restart. (The full GuidanceAgent → sources path
+    // answers immediately, with no restart. (The full consult→compose grounding path
     // is covered in the composition tests; here we assert the retrieval contract.)
-    const hits = docs.index.retrieve('how do I enable single sign-on?')
+    const hits = await docs.index.retrieve('how do I enable single sign-on?')
     expect(hits.map((h) => h.id)).toContain(created.id)
 
     // It can be removed.
@@ -90,12 +90,45 @@ describe('admin docs API (FCW-04)', () => {
     expect(((await b.json()) as { id: string }).id).toBe(created.id)
     const list2 = (await (await fetch(`${base}/admin/docs`, { headers: bearer })).json()) as { items: unknown[] }
     expect(list2.items).toHaveLength(1)
-    expect(docs.index.retrieve('vacation days')[0]!.text).toContain('25 days')
+    expect((await docs.index.retrieve('vacation days'))[0]!.text).toContain('25 days')
   })
 
   it('defaults source to "upload" when omitted (legacy paste path)', async () => {
     const { base } = await start()
     const res = await fetch(`${base}/admin/docs`, { method: 'POST', headers: json, body: JSON.stringify({ text: 'a plain note' }) })
     expect(((await res.json()) as { source: string }).source).toBe('upload')
+  })
+
+  it('scrapes a posted URL server-side (source "link") and re-posting refreshes in place', async () => {
+    const { createServer } = await import('node:http')
+    let html = '<html><head><title>Pricing</title></head><body><p>Pro costs $20 per month.</p></body></html>'
+    const site = createServer((_req, res) => {
+      res.setHeader('content-type', 'text/html')
+      res.end(html)
+    })
+    await new Promise<void>((r) => site.listen(0, '127.0.0.1', r))
+    const url = `http://127.0.0.1:${(site.address() as import('node:net').AddressInfo).port}/pricing`
+
+    try {
+      const { base, docs } = await start()
+      const post = () =>
+        fetch(`${base}/admin/docs`, { method: 'POST', headers: json, body: JSON.stringify({ source: 'link', externalId: url }) })
+
+      const res = await post()
+      expect(res.status).toBe(200)
+      const created = (await res.json()) as { id: string; source: string; externalId: string; text: string }
+      expect(created).toMatchObject({ source: 'link', externalId: url })
+      expect(created.text).toContain('Pro costs $20 per month.')
+      expect((await docs.index.retrieve('how much does pro cost per month?')).map((h) => h.id)).toContain(created.id)
+
+      // The page changes; re-posting the same URL refreshes the SAME doc (no dupe).
+      html = '<html><body><p>Pro costs $25 per month.</p></body></html>'
+      const again = (await (await post()).json()) as { id: string }
+      expect(again.id).toBe(created.id)
+      const list = (await (await fetch(`${base}/admin/docs`, { headers: bearer })).json()) as { items: unknown[] }
+      expect(list.items).toHaveLength(1)
+    } finally {
+      site.close()
+    }
   })
 })

@@ -1,12 +1,12 @@
 import { createHmac } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import type { AdminApi } from '@helpuit/composition'
+import { scrapeLink, type AdminApi } from '@helpuit/composition'
 import type { DocSource } from '@helpuit/db'
 import { RateLimiter } from '@helpuit/budget'
 import type { ActivityBus } from './activity.js'
 
 /** Doc sources accepted from the console (repo docs are ephemeral, never posted). */
-const DOC_SOURCES: readonly string[] = ['upload', 'gdrive', 'dropbox', 'sharepoint']
+const DOC_SOURCES: readonly string[] = ['upload', 'gdrive', 'dropbox', 'sharepoint', 'link']
 import {
   constantTimeEqual,
   verifyBearer,
@@ -167,7 +167,7 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
         status: typeof q.status === 'string' ? (q.status as never) : undefined,
         level: typeof q.level === 'string' ? (q.level as never) : undefined,
         classification: typeof q.classification === 'string' ? (q.classification as never) : undefined,
-        conversationId: intParam(q.conversationId),
+        conversationId: typeof q.conversationId === 'string' && q.conversationId !== '' ? q.conversationId : undefined,
         customerId: typeof q.customerId === 'string' ? q.customerId : undefined,
         // Conversations-page relation filters (became a ticket / has open issue / needs draft review).
         ticket: q.ticket === 'true' ? true : undefined,
@@ -326,7 +326,7 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
         return { status: 'invalid conversation id' }
       }
       const note = (request.body as { note?: string } | undefined)?.note
-      await api.pauseConversation(id, note)
+      await api.pauseConversation(String(id), note)
       return { status: 'paused', conversationId: id }
     }),
   )
@@ -339,7 +339,7 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
         reply.code(400)
         return { status: 'invalid conversation id' }
       }
-      await api.resumeConversation(id)
+      await api.resumeConversation(String(id))
       return { status: 'resumed', conversationId: id }
     }),
   )
@@ -698,14 +698,28 @@ export function registerAdminRoutes(app: FastifyInstance, options: AdminRoutesOp
       '/admin/docs',
       guard(async (request, reply) => {
         const body = request.body as { title?: unknown; text?: unknown; source?: unknown; externalId?: unknown } | undefined
-        const text = body?.text
-        if (typeof text !== 'string' || text.trim() === '') {
+        const source = DOC_SOURCES.includes(body?.source as string) ? (body!.source as DocSource) : 'upload'
+        const externalId = typeof body?.externalId === 'string' && body.externalId !== '' ? body.externalId : undefined
+        let title = typeof body?.title === 'string' && body.title !== '' ? body.title : undefined
+        let text = typeof body?.text === 'string' ? body.text : ''
+
+        // A 'link' doc is a URL: scrape it server-side (externalId IS the url), so
+        // re-posting/sweeping the same link refreshes the same doc in place.
+        if (source === 'link' && externalId !== undefined && text.trim() === '') {
+          try {
+            const scraped = await scrapeLink(externalId)
+            text = scraped.text
+            title = title ?? scraped.title ?? externalId
+          } catch (error) {
+            reply.code(400)
+            return { status: 'invalid', message: error instanceof Error ? error.message : 'could not fetch the URL' }
+          }
+        }
+
+        if (text.trim() === '') {
           reply.code(400)
           return { status: 'invalid', message: 'text (non-empty string) required' }
         }
-        const title = typeof body?.title === 'string' && body.title !== '' ? body.title : undefined
-        const source = DOC_SOURCES.includes(body?.source as string) ? (body!.source as DocSource) : 'upload'
-        const externalId = typeof body?.externalId === 'string' && body.externalId !== '' ? body.externalId : undefined
         // A stable externalId means "this is the same file" → upsert (refresh in place);
         // otherwise it's a one-off paste/upload → insert.
         return externalId !== undefined ? docs.importDoc({ source, externalId, title, text }) : docs.add({ title, text, source })

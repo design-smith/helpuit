@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
-import { Github, ChevronDown } from 'lucide-react'
+import { Github, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   useApplySection,
   useEffectiveConfig,
@@ -33,6 +33,7 @@ import {
   Button,
   Callout,
   CenteredSpinner,
+  cx,
   Checkbox,
   CodeBlock,
   Disclosure,
@@ -50,7 +51,7 @@ import {
   Toggle,
 } from '../../components/ui'
 import { parseColumnList } from './scaffold-form'
-import { integrationStatuses, availableLlmProviders, type IntegrationStatus } from './integration-status'
+import { integrationStatuses, availableLlmProviders, type IntegrationStatus, type IntegrationCategory } from './integration-status'
 
 /** Searchable combobox drop-in for <Select> — filters options as you type. */
 function SearchableSelect({
@@ -238,6 +239,36 @@ function useSectionForm(section: string) {
   return { save, result, pending: apply.isPending }
 }
 
+/** A titled, collapsible group header that reveals its connection cards in a grid. */
+function CollapsibleSection({
+  title,
+  summary,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  summary?: string
+  defaultOpen?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 border-b-2 border-border pb-2 text-left transition-colors hover:text-foreground"
+      >
+        <ChevronRight className={cx('h-5 w-5 shrink-0 text-muted transition-transform', open && 'rotate-90')} />
+        <h2 className="font-heading text-foreground">{title}</h2>
+        {summary !== undefined && <span className="ml-auto text-xs text-muted">{summary}</span>}
+      </button>
+      {open && <div className="grid gap-4 lg:grid-cols-2">{children}</div>}
+    </section>
+  )
+}
+
 export function ConnectionsPage() {
   const { data, isPending, isError, error, refetch } = useEffectiveConfig()
   if (isPending) return <CenteredSpinner />
@@ -245,33 +276,101 @@ export function ConnectionsPage() {
 
   const statuses = integrationStatuses(data)
   const enabledMap = Object.fromEntries(statuses.map((s) => [s.id, s.enabled]))
+  const origin = window.location.origin
   const advanced: Record<string, ReactNode> = {
     github: <GithubAdvanced github={data.config.github} />,
     chatwoot: <ChatwootAdvanced chatwoot={data.config.chatwoot} />,
+    intercom: (
+      <PlatformAdvanced
+        section="intercom"
+        block={data.config.intercom}
+        configFields={[
+          { key: 'adminId', label: 'Admin ID', placeholder: 'bot/teammate id replies post as' },
+          { key: 'baseUrl', label: 'API base URL', placeholder: 'https://api.intercom.io (optional)' },
+        ]}
+        secretFields={[
+          { envKey: 'INTERCOM_ACCESS_TOKEN', label: 'Access token' },
+          { envKey: 'INTERCOM_CLIENT_SECRET', label: 'Client secret' },
+        ]}
+        hint={<WebhookHint platform="Intercom" url={`${origin}/webhooks/intercom`} />}
+      />
+    ),
+    freshdesk: (
+      <PlatformAdvanced
+        section="freshdesk"
+        block={data.config.freshdesk}
+        configFields={[{ key: 'domain', label: 'Subdomain', placeholder: 'acme → acme.freshdesk.com' }]}
+        secretFields={[{ envKey: 'FRESHDESK_API_KEY', label: 'API key' }]}
+        hint={<PollHint platform="Freshdesk" />}
+      />
+    ),
+    hubspot: (
+      <PlatformAdvanced
+        section="hubspot"
+        block={data.config.hubspot}
+        configFields={[
+          { key: 'senderActorId', label: 'Sender actor ID', placeholder: 'A-12345' },
+          { key: 'baseUrl', label: 'API base URL', placeholder: 'https://api.hubapi.com (optional)' },
+        ]}
+        secretFields={[{ envKey: 'HUBSPOT_ACCESS_TOKEN', label: 'Private-app token' }]}
+        hint={<PollHint platform="HubSpot" />}
+      />
+    ),
+    zendesk: (
+      <PlatformAdvanced
+        section="zendesk"
+        block={data.config.zendesk}
+        configFields={[
+          { key: 'subdomain', label: 'Subdomain', placeholder: 'acme → acme.zendesk.com' },
+          { key: 'email', label: 'Agent email', placeholder: 'agent@acme.com' },
+        ]}
+        secretFields={[
+          { envKey: 'ZENDESK_API_TOKEN', label: 'API token' },
+          { envKey: 'ZENDESK_WEBHOOK_SECRET', label: 'Webhook signing secret' },
+        ]}
+        hint={<WebhookHint platform="Zendesk" url={`${origin}/webhooks/zendesk`} />}
+      />
+    ),
   }
 
+  const renderCard = (status: IntegrationStatus): ReactNode =>
+    status.id === 'llm' ? (
+      <LlmCard key={status.id} status={status} view={data} />
+    ) : (
+      <IntegrationCard key={status.id} status={status} enabledMap={enabledMap}>
+        {advanced[status.id]}
+      </IntegrationCard>
+    )
+  const inCategory = (category: IntegrationCategory) => statuses.filter((s) => s.category === category)
+  const connectedSummary = (list: IntegrationStatus[]) =>
+    `${list.filter((s) => s.connected).length} of ${list.length} connected`
+
+  // Database is a bespoke card (account-data source), not an enable-map integration.
+  const isSet = (key: string) => data.secrets.find((s) => s.key === key)?.set ?? false
+  const ad = (data.config.accountData ?? {}) as { source?: string; supabase?: { projectRef?: string } }
+  const dbConnected =
+    (ad.source === 'supabase' && ad.supabase?.projectRef !== undefined) ||
+    (ad.source === 'postgres' && isSet('ACCOUNT_DB_URL')) ||
+    isSet('SUPABASE_OAUTH_ACCESS_TOKEN')
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Connections"
         subtitle="Connect an integration, then flip it on or off. Toggles apply live; Advanced holds manual setup + disconnect."
       />
-      <div className="grid gap-4 lg:grid-cols-2">
-        {statuses.map((status) =>
-          status.id === 'llm' ? (
-            <LlmCard key={status.id} status={status} view={data} />
-          ) : (
-            <IntegrationCard key={status.id} status={status} enabledMap={enabledMap}>
-              {advanced[status.id]}
-            </IntegrationCard>
-          ),
-        )}
-      </div>
-
-      <h2 className="mb-3 mt-8 text-sm font-heading uppercase tracking-wide text-muted">Operational helpers</h2>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <CollapsibleSection title="Support" summary={connectedSummary(inCategory('support'))}>
+        {inCategory('support').map(renderCard)}
+      </CollapsibleSection>
+      <CollapsibleSection title="Code" summary={connectedSummary(inCategory('code'))}>
+        {inCategory('code').map(renderCard)}
+      </CollapsibleSection>
+      <CollapsibleSection title="Database" summary={dbConnected ? 'Connected' : 'Not connected'}>
         <AccountDataCard data={data} />
-      </div>
+      </CollapsibleSection>
+      <CollapsibleSection title="Intelligence" summary={connectedSummary(inCategory('intelligence'))}>
+        {inCategory('intelligence').map(renderCard)}
+      </CollapsibleSection>
     </div>
   )
 }
@@ -591,6 +690,89 @@ function ChatwootAdvanced({ chatwoot }: { chatwoot: any }) {
         {setupResult?.ok === false && <FormResult tone="error">{setupResult.detail}</FormResult>}
         <span className="text-xs text-muted">Creates the Agent Bot + webhook in Chatwoot (idempotent). Needs HELPUIT_PUBLIC_URL.</span>
       </div>
+    </div>
+  )
+}
+
+/** Where to point a webhook platform's callback (Intercom, Zendesk). */
+function WebhookHint({ platform, url }: { platform: string; url: string }) {
+  return (
+    <Callout tone="info" className="text-xs">
+      In {platform}, point a webhook at this URL, then set its signing secret below:
+      <CodeBlock>{url}</CodeBlock>
+    </Callout>
+  )
+}
+
+/** Poll-only platforms need no webhook — Helpuit fetches new messages on a timer. */
+function PollHint({ platform }: { platform: string }) {
+  return (
+    <Callout tone="info" className="text-xs">
+      No webhook needed — Helpuit polls {platform} for new customer messages about once a minute.
+    </Callout>
+  )
+}
+
+/**
+ * A generic Advanced form for the newer support platforms: a few structural config
+ * fields + one or more vault secrets, saved together (secrets first, then the config
+ * section). Reused for Intercom, Freshdesk, HubSpot and Zendesk — their only
+ * differences are the field list and the connect hint.
+ */
+function PlatformAdvanced({
+  section,
+  block,
+  configFields,
+  secretFields,
+  hint,
+}: {
+  section: string
+  block: Record<string, unknown> | undefined
+  configFields: Array<{ key: string; label: string; placeholder?: string }>
+  secretFields: Array<{ envKey: string; label: string }>
+  hint?: ReactNode
+}) {
+  const { save, result, pending } = useSectionForm(section)
+  const setSecret = useSetSecret()
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(configFields.map((f) => [f.key, block?.[f.key] === undefined ? '' : String(block[f.key])])),
+  )
+  const [secrets, setSecrets] = useState<Record<string, string>>({})
+
+  return (
+    <div className="space-y-3">
+      {hint}
+      {configFields.map((f) => (
+        <Field key={f.key} label={f.label} row>
+          <Input
+            className="w-56"
+            placeholder={f.placeholder}
+            value={values[f.key] ?? ''}
+            onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+          />
+        </Field>
+      ))}
+      {secretFields.map((f) => (
+        <Field key={f.envKey} label={f.label} row>
+          <Input
+            className="w-56"
+            type="password"
+            placeholder="set to update"
+            value={secrets[f.envKey] ?? ''}
+            onChange={(e) => setSecrets({ ...secrets, [f.envKey]: e.target.value })}
+          />
+        </Field>
+      ))}
+      <SaveRow
+        result={result}
+        pending={pending || setSecret.isPending}
+        onSave={async () => {
+          for (const [key, value] of Object.entries(secrets)) {
+            if (value !== '') await setSecret.mutateAsync({ key, value })
+          }
+          save(Object.fromEntries(configFields.map((f) => [f.key, values[f.key] ?? '']).filter(([, v]) => v !== '')))
+        }}
+      />
     </div>
   )
 }

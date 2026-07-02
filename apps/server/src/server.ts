@@ -106,6 +106,27 @@ export interface ChatwootWebhook {
   enabled?: () => boolean
 }
 
+/**
+ * A generic support-platform connection behind `/webhooks/:connectionId`. Same
+ * flow as the Chatwoot webhook, but the platform-specific bits — which field is
+ * the idempotency event id, the rate-limit key, and how to extract the context
+ * (auth token) — are supplied by the adapter instead of baked into the route.
+ */
+export interface WebhookConnection {
+  intake: (payload: unknown, context: InboundContext) => Promise<unknown>
+  idempotency?: { claim: (id: string) => Promise<boolean> }
+  rateLimiter?: { allow: (key: string, at: number) => boolean }
+  enabled?: () => boolean
+  /** Event id for idempotency (absent → no dedup). */
+  eventId?: (payload: unknown) => string | undefined
+  /** Rate-limit key, e.g. the conversation id (absent → no rate limit). */
+  rateLimitKey?: (payload: unknown) => string | undefined
+  /** Extract the orchestrator context (auth token, custom attributes) from the payload. */
+  extractContext?: (payload: unknown) => InboundContext
+  /** When set, the raw request body is signature-checked before intake (401 on fail). */
+  verify?: (rawBody: string, headers: Record<string, string | string[] | undefined>) => boolean
+}
+
 interface ChatwootWebhookPayload {
   id?: number | string
   conversation?: { id?: number; custom_attributes?: Record<string, unknown> }
@@ -128,6 +149,8 @@ export interface ServerOptions {
   bodyLimit?: number
   /** When set, registers POST /webhooks/chatwoot. */
   chatwoot?: ChatwootWebhook
+  /** When set, registers POST /webhooks/:connectionId for each platform connection. */
+  connections?: Record<string, WebhookConnection>
   /** When set, registers POST /webhooks/github. */
   github?: GitHubWebhook
   /** When set, registers GET /metrics and records webhook/outcome counters. */
@@ -306,6 +329,53 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         ...(payload.sender?.custom_attributes ?? {}),
       }
       const result = await chatwoot.intake(request.body, { customAttributes })
+      const outcome = (result as { outcome?: unknown } | undefined)?.outcome
+      if (typeof outcome === 'string') metrics?.recordOutcome(outcome)
+      reply.code(200)
+      return { status: 'ok' }
+    })
+  }
+
+  // ponytail: generic multi-platform dispatch. Chatwoot keeps its own static route
+  // above for now; fold it into `connections` when the registry composes it (slice 1 c4).
+  const connections = options.connections
+  if (connections !== undefined) {
+    app.post('/webhooks/:connectionId', async (request, reply) => {
+      const connectionId = (request.params as { connectionId: string }).connectionId
+      const conn = connections[connectionId]
+      if (conn === undefined) {
+        reply.code(404)
+        return { status: 'unknown connection' }
+      }
+      metrics?.recordWebhook(connectionId)
+      if (conn.enabled !== undefined && !conn.enabled()) {
+        reply.code(200)
+        return { status: 'skipped' }
+      }
+      if (conn.verify !== undefined) {
+        const rawBody = (request as { rawBody?: string }).rawBody ?? ''
+        if (!conn.verify(rawBody, request.headers)) {
+          reply.code(401)
+          return { status: 'invalid signature' }
+        }
+      }
+      const payload = request.body ?? {}
+      const id = conn.eventId?.(payload)
+      if (id !== undefined && conn.idempotency !== undefined) {
+        if (!(await conn.idempotency.claim(id))) {
+          reply.code(200)
+          return { status: 'duplicate' }
+        }
+      }
+      const key = conn.rateLimitKey?.(payload)
+      if (conn.rateLimiter !== undefined && key !== undefined) {
+        if (!conn.rateLimiter.allow(key, Date.now())) {
+          reply.code(429)
+          return { status: 'rate_limited' }
+        }
+      }
+      const context = conn.extractContext?.(payload) ?? {}
+      const result = await conn.intake(payload, context)
       const outcome = (result as { outcome?: unknown } | undefined)?.outcome
       if (typeof outcome === 'string') metrics?.recordOutcome(outcome)
       reply.code(200)

@@ -18,5 +18,5 @@ export function parseInboundMessage(payload: unknown): InboundMessage | null {
   const conversationId = event.conversation?.id
   if (typeof conversationId !== 'number') return null
 
-  return { conversationId, content: event.content }
+  return { conversationId: String(conversationId), content: event.content }
 }

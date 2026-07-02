@@ -63,7 +63,7 @@ describe('buildReproductionRunner (gating)', () => {
   it('reproduces via a real DynamicReproducer and persists the evidence to the investigation', async () => {
     handle = await createDb(':memory:')
     const db = handle.db
-    const investigation = await new DrizzleInvestigationRepository(db).create({ conversationId: 7, customerId: 'u1' })
+    const investigation = await new DrizzleInvestigationRepository(db).create({ conversationId: '7', customerId: 'u1' })
 
     // A real reproduction surfacing a 5xx → reproduced true, with captured evidence.
     const driver = driverYielding({
@@ -89,7 +89,7 @@ describe('buildReproductionRunner (gating)', () => {
   it('does not reproduce an irreversible feature (e.g. payment) even when enabled', async () => {
     handle = await createDb(':memory:')
     const db = handle.db
-    const investigation = await new DrizzleInvestigationRepository(db).create({ conversationId: 8 })
+    const investigation = await new DrizzleInvestigationRepository(db).create({ conversationId: '8' })
     const driver = driverYielding({ consoleErrors: ['boom'], networkErrors: [] })
     const runner = buildReproductionRunner(cfg(), { db, browserDriver: driver, containers: new FakeContainerRunner() })!
 
@@ -105,7 +105,7 @@ describe('buildReproductionRunner (gating)', () => {
   it('is invoked by the EscalationPipeline with the investigation id, tying evidence to it', async () => {
     handle = await createDb(':memory:')
     const db = handle.db
-    const investigation = await new DrizzleInvestigationRepository(db).create({ conversationId: 9 })
+    const investigation = await new DrizzleInvestigationRepository(db).create({ conversationId: '9' })
     const driver = driverYielding({ consoleErrors: ['TypeError: cannot read x'], networkErrors: [] })
     const runner = buildReproductionRunner(cfg(), { db, browserDriver: driver, containers: new FakeContainerRunner() })!
 

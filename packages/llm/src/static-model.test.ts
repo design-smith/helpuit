@@ -38,5 +38,42 @@ describe('createStaticAnalysisModel', () => {
     const result = await model.analyze({ complaint: 'x', code: { 'a.ts': 'y' } })
     expect(result.confidence).toBe(0.2)
     expect(result.suspectedFiles).toEqual(['a.ts'])
+    expect(result.verdict).toBe('explains_behavior') // prose fallback never invents a bug
+  })
+
+  it('returns BOTH layers: technical (hypothesis/files) and product-language (explanation + verdict)', async () => {
+    srv = await startTestServer(() => ({
+      choices: [
+        {
+          message: {
+            content:
+              '{"hypothesis":"export gate checks subscription.active","suspectedFiles":["export.ts"],"confidence":0.7,"explanation":"Exports are only available on an active subscription — renewing re-enables the button.","verdict":"user_error_or_prerequisite"}',
+          },
+        },
+      ],
+      usage: {},
+    }))
+    const model = createStaticAnalysisModel(new OpenAICompatibleModel({ model: 'm', baseUrl: srv.baseUrl }))
+
+    const result = await model.analyze({ complaint: 'export button greyed out', code: { 'export.ts': '...' } })
+
+    expect(result.verdict).toBe('user_error_or_prerequisite')
+    expect(result.explanation).toContain('active subscription')
+    expect(result.hypothesis).toContain('subscription.active')
+  })
+
+  it('degrades a missing/bogus verdict to explains_behavior and defaults the explanation from the hypothesis', async () => {
+    srv = await startTestServer(() => ({
+      choices: [
+        { message: { content: '{"hypothesis":"timeout in webhook retry","suspectedFiles":[],"confidence":0.5,"verdict":"launch_missiles"}' } },
+      ],
+      usage: {},
+    }))
+    const model = createStaticAnalysisModel(new OpenAICompatibleModel({ model: 'm', baseUrl: srv.baseUrl }))
+
+    const result = await model.analyze({ complaint: 'x', code: {} })
+
+    expect(result.verdict).toBe('explains_behavior')
+    expect(result.explanation).toContain('timeout in webhook retry')
   })
 })

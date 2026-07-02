@@ -93,4 +93,17 @@ describe('schema migrations', () => {
     expect(rows.rows).toHaveLength(1)
     expect(rows.rows[0]).toMatchObject({ id: 'd1', source: null })
   })
+
+  it('adds case_json to investigations on fresh AND pre-existing databases', async () => {
+    handle = await createDb(':memory:')
+    expect(await columnsOf(handle.client, 'helpuit_investigations')).toEqual(expect.arrayContaining(['case_json']))
+
+    // A DB created before the Case landed upgrades in place.
+    client = createClient({ url: ':memory:' })
+    await client.execute(
+      'CREATE TABLE helpuit_investigations (id TEXT PRIMARY KEY, conversation_id INTEGER NOT NULL, customer_id TEXT, status TEXT NOT NULL, level TEXT NOT NULL, classification TEXT, confidence REAL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+    )
+    await ensureColumns(client)
+    expect(await columnsOf(client, 'helpuit_investigations')).toEqual(expect.arrayContaining(['case_json']))
+  })
 })

@@ -1,9 +1,21 @@
 import { resolveFeature, type FeatureManifest } from '@helpuit/feature-manifest'
 
+/** How the code explains the complaint — the product-language verdict of the Code Analyst. */
+export type CodeVerdict = 'user_error_or_prerequisite' | 'actual_bug' | 'explains_behavior'
+
+/**
+ * Two-layer findings: the technical layer (hypothesis/files/confidence) is for the
+ * internal side only — escalation drafts, the console, the case memory. The
+ * product-language layer (explanation + verdict) is the ONLY part that may reach
+ * the customer-facing Composer.
+ */
 export interface StaticFindings {
   hypothesis: string
   suspectedFiles: string[]
   confidence: number
+  /** Customer-safe explanation of what the code does — no paths, no engineer-speak. */
+  explanation: string
+  verdict: CodeVerdict
   /** The feature the complaint resolved to (used for dedup + the issue). */
   feature?: string
 }

@@ -8,7 +8,7 @@ describe('parseInboundMessage', () => {
       content: 'the save button is greyed out',
       conversation: { id: 42 },
     })
-    expect(msg).toEqual({ conversationId: 42, content: 'the save button is greyed out' })
+    expect(msg).toEqual({ conversationId: '42', content: 'the save button is greyed out' })
   })
 
   it('ignores outgoing (bot/agent) messages', () => {

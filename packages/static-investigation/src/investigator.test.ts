@@ -30,13 +30,15 @@ const retriever: CodeRetriever = {
 }
 
 describe('StaticCodeInvestigator', () => {
-  it('resolves the feature, retrieves its code, and returns the model hypothesis', async () => {
+  it('resolves the feature, retrieves its code, and passes BOTH finding layers through', async () => {
     const model: StaticAnalysisModel = {
       async analyze({ code }) {
         return {
           hypothesis: 'null deref in the save handler',
           suspectedFiles: Object.keys(code),
           confidence: 0.8,
+          explanation: 'Saving fails when the card form is submitted while a payment is still processing.',
+          verdict: 'actual_bug',
         }
       },
     }
@@ -47,6 +49,8 @@ describe('StaticCodeInvestigator', () => {
     expect(findings.hypothesis).toContain('null deref')
     expect(findings.suspectedFiles).toContain('BillingForm.vue')
     expect(findings.confidence).toBe(0.8)
+    expect(findings.verdict).toBe('actual_bug')
+    expect(findings.explanation).toContain('payment is still processing')
   })
 
   it('analyzes with empty code when no feature matches the complaint', async () => {
@@ -54,7 +58,13 @@ describe('StaticCodeInvestigator', () => {
     const model: StaticAnalysisModel = {
       async analyze({ code, feature }) {
         receivedCode = code
-        return { hypothesis: `feature=${feature}`, suspectedFiles: [], confidence: 0.1 }
+        return {
+          hypothesis: `feature=${feature}`,
+          suspectedFiles: [],
+          confidence: 0.1,
+          explanation: 'nothing conclusive',
+          verdict: 'explains_behavior',
+        }
       },
     }
     const investigator = new StaticCodeInvestigator(manifest, retriever, model)

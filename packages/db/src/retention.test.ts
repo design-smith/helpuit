@@ -21,8 +21,8 @@ describe('RetentionService', () => {
     const db = handle.db
 
     await db.insert(investigations).values([
-      { id: 'old', conversationId: 1, status: 'resolved', level: 'l1', createdAt: NOW - 100 * DAY, updatedAt: NOW - 100 * DAY },
-      { id: 'fresh', conversationId: 2, status: 'open', level: 'l1', createdAt: NOW - 1 * DAY, updatedAt: NOW - 1 * DAY },
+      { id: 'old', conversationId: '1', status: 'resolved', level: 'l1', createdAt: NOW - 100 * DAY, updatedAt: NOW - 100 * DAY },
+      { id: 'fresh', conversationId: '2', status: 'open', level: 'l1', createdAt: NOW - 1 * DAY, updatedAt: NOW - 1 * DAY },
     ])
     await db.insert(auditEntries).values([
       { investigationId: 'old', type: 'guidance', data: null, at: NOW - 100 * DAY },
@@ -31,7 +31,7 @@ describe('RetentionService', () => {
     await db.insert(evidenceArtifacts).values({
       id: 'e1', investigationId: 'old', type: 'log', redactionStatus: 'raw', content: 'sealed', createdAt: NOW - 100 * DAY,
     })
-    await db.insert(tickets).values({ id: 't1', investigationId: 'old', conversationId: 1 })
+    await db.insert(tickets).values({ id: 't1', investigationId: 'old', conversationId: '1' })
 
     const svc = new RetentionService(db, () => NOW)
     const result = await svc.purgeOlderThan(90 * DAY)
@@ -66,7 +66,7 @@ describe('RetentionService', () => {
     handle = await createDb(':memory:')
     const db = handle.db
     await db.insert(investigations).values({
-      id: 'fresh', conversationId: 1, status: 'open', level: 'l1', createdAt: NOW - 1 * DAY, updatedAt: NOW - 1 * DAY,
+      id: 'fresh', conversationId: '1', status: 'open', level: 'l1', createdAt: NOW - 1 * DAY, updatedAt: NOW - 1 * DAY,
     })
 
     const svc = new RetentionService(db, () => NOW)

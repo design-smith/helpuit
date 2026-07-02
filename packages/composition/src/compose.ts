@@ -6,22 +6,19 @@ import {
   DrizzleAuditRepository,
   DrizzleSpendRepository,
   DrizzleDraftRepository,
+  DrizzleEmbeddingRepository,
   type Db,
 } from '@helpuit/db'
-import {
-  ModelRouter,
-  createGuidanceModel,
-  createAccountModel,
-  createStaticAnalysisModel,
-  MeteredChatModel,
-  type ChatModel,
-} from '@helpuit/llm'
+import { ModelRouter, createAccountModel, createStaticAnalysisModel, MeteredChatModel, type ChatModel } from '@helpuit/llm'
 import { PersistingSpendLedger, BudgetGovernor } from '@helpuit/budget'
-import { IdentityResolver, createTokenVerifier, type TokenVerifierConfig } from '@helpuit/identity'
-import { GuidanceAgent, InMemoryDocsIndex, ManifestCodeContextProvider, type Doc, type DocsIndex } from '@helpuit/guidance'
-import { HttpChatwootClient } from '@helpuit/chatwoot'
+import { IdentityResolver, createTokenVerifier, type TokenVerifierConfig, type ConversationContext } from '@helpuit/identity'
+import { InMemoryDocsIndex, type Doc, type DocsIndex } from '@helpuit/guidance'
+import { HttpChatwootClient, type SupportClient, type InboundMessage } from '@helpuit/chatwoot'
+import { HttpIntercomClient, parseInboundMessage as parseIntercom, verifyIntercomSignature, extractExternalId } from '@helpuit/intercom'
+import { HttpFreshdeskClient, FreshdeskPoller, fetchRequesterExternalId, type PolledMessage } from '@helpuit/freshdesk'
+import { HttpHubSpotClient, HubSpotPoller } from '@helpuit/hubspot'
+import { HttpZendeskClient, parseInboundMessage as parseZendesk, verifyZendeskSignature } from '@helpuit/zendesk'
 import { PersistingAuditLog } from '@helpuit/audit'
-import type { MatchVerdict } from '@helpuit/dedup'
 import {
   QueryRouteCatalog,
   QueryRouteClient,
@@ -44,18 +41,21 @@ import { EscalationPipeline } from '@helpuit/escalation'
 import type { BrowserDriver } from '@helpuit/reproduction'
 import { buildReproductionRunner } from './repro-runner.js'
 import {
-  Orchestrator,
+  PlannerEngine,
+  Planner,
+  Composer,
+  PolicyKernel,
   type AccountInvestigationPort,
-  type StaticInvestigationPort,
+  type CodeAnalystPort,
   type EscalationPort,
 } from '@helpuit/orchestrator'
-
-/** Default confidence threshold for resolving guidance vs escalating. */
-const GUIDANCE_THRESHOLD = 0.7
+import { buildEmbedder } from './embedder.js'
+import { withCaseEmbedding } from './knowledge-sync.js'
+import { KnownIssueMatcher } from './known-issue.js'
 
 export interface CompositionDeps {
   db: Db
-  /** Docs to ground L1 guidance (used only when `docsIndex` is not supplied). */
+  /** Docs to ground answers (used only when `docsIndex` is not supplied). */
   docs?: Doc[]
   /**
    * Live, shared docs index (FCW-04). When provided it's used as-is — so docs the
@@ -63,14 +63,164 @@ export interface CompositionDeps {
    * rebuilds that swap the orchestrator. When absent, an index is built from `docs`.
    */
   docsIndex?: DocsIndex
-  /** Confirmed feature manifest; when present, enables L3a static code investigation. */
+  /** Confirmed feature manifest; when present, enables the Code Analyst. */
   manifest?: FeatureManifest
   /**
-   * Browser driver for L3b dynamic reproduction (FCW-06). When provided AND
+   * Browser driver for dynamic reproduction (FCW-06). When provided AND
    * `policy.playwrightEnabled` is on AND sandbox creds exist, a suspected bug is
    * reproduced in a sandbox and the evidence persisted. Absent → no reproduction.
    */
   browserDriver?: BrowserDriver
+  /**
+   * Support-platform override. Absent → the default Chatwoot connection (bare
+   * conversationIds). Present → replies go through this client and state is
+   * namespaced `connectionId:nativeId` (see `buildIntercomConnection`).
+   */
+  connection?: PlatformConnection
+}
+
+/** A resolved non-Chatwoot support connection: which client replies + how to parse + its namespace. */
+export interface PlatformConnection {
+  connectionId: string
+  client: SupportClient
+  parse: (payload: unknown) => InboundMessage | null
+  /** Webhook signature check (rawBody + headers), or undefined when no secret is set. */
+  verify?: (rawBody: string, headers: Record<string, string | string[] | undefined>) => boolean
+  /** Identity resolver for this platform (e.g. trust an Intercom-verified external_id). */
+  identity?: IdentityResolver
+  /** Pull the auth token / context out of this platform's webhook payload. */
+  extractContext?: (payload: unknown) => ConversationContext
+  /** Poll-only platforms (Freshdesk, HubSpot): fetch customer messages since a cursor. Absent on webhook platforms. */
+  poll?: (sinceIso: string) => Promise<PolledMessage[]>
+  /** When true, this connection's engine is built without account investigation (weak identity → L2 off). */
+  disableAccount?: boolean
+}
+
+/** Where the auth token lives in a conversation's custom attributes (Helpuit's default key). */
+const AUTH_TOKEN_KEY = 'helpuit_auth_token'
+
+/** Poll loops enqueue pre-normalized messages; the connection's parse just validates the shape. */
+function parsePolledMessage(payload: unknown): InboundMessage | null {
+  const m = payload as { conversationId?: unknown; content?: unknown }
+  return typeof m.conversationId === 'string' && typeof m.content === 'string' && m.content !== ''
+    ? { conversationId: m.conversationId, content: m.content }
+    : null
+}
+
+/** Lift a polled message's requester into the auth-token slot for the identity resolver. */
+function requesterContext(payload: unknown): ConversationContext {
+  return { customAttributes: { [AUTH_TOKEN_KEY]: (payload as { requesterId?: string }).requesterId } }
+}
+
+/**
+ * Resolve the Intercom connection from config, or undefined when Intercom isn't
+ * configured or is toggled off. connectionId `intercom` namespaces its state.
+ */
+export function buildIntercomConnection(config: HelpuitConfig): PlatformConnection | undefined {
+  if (config.intercom === undefined || !config.integrations.intercom) return undefined
+  const clientSecret = config.intercom.clientSecret
+  return {
+    connectionId: 'intercom',
+    client: new HttpIntercomClient({
+      accessToken: config.intercom.accessToken,
+      adminId: config.intercom.adminId,
+      baseUrl: config.intercom.baseUrl,
+    }),
+    parse: parseIntercom,
+    // Intercom signs with X-Hub-Signature (sha1 HMAC of the raw body). No secret → no check.
+    verify:
+      clientSecret !== undefined && clientSecret !== ''
+        ? (rawBody, headers) => {
+            const header = headers['x-hub-signature']
+            return verifyIntercomSignature(rawBody, clientSecret, Array.isArray(header) ? header[0] : header)
+          }
+        : undefined,
+    // Identity = the contact's external_id, trusted as the verified user.
+    // ponytail: trusts Intercom Identity Verification (it signs external_id at Messenger
+    //   boot). If a merchant can't enable IV, upgrade to verifying a user_hash / fetching
+    //   the contact before this can be trusted.
+    identity: new IdentityResolver({ verify: (userId) => Promise.resolve(userId ? { userId } : null) }),
+    extractContext: (payload) => ({ customAttributes: { [AUTH_TOKEN_KEY]: extractExternalId(payload) } }),
+  }
+}
+
+/**
+ * Resolve the Freshdesk connection from config, or undefined when it isn't
+ * configured or is toggled off. Poll-only (no webhook), so no `verify`. The poll
+ * loop enqueues pre-normalized messages ({ conversationId, content, requesterId });
+ * identity re-fetches the requester contact for its merchant-side id.
+ */
+export function buildFreshdeskConnection(config: HelpuitConfig): PlatformConnection | undefined {
+  if (config.freshdesk === undefined || !config.integrations.freshdesk) return undefined
+  const fd = { baseUrl: `https://${config.freshdesk.domain}.freshdesk.com/api/v2`, apiKey: config.freshdesk.apiKey }
+  const poller = new FreshdeskPoller(fd)
+  return {
+    connectionId: 'freshdesk',
+    client: new HttpFreshdeskClient(fd),
+    poll: (sinceIso) => poller.poll(sinceIso),
+    parse: parsePolledMessage,
+    identity: new IdentityResolver({
+      verify: (requesterId) => fetchRequesterExternalId(fd, requesterId).then((id) => (id ? { userId: id } : null)),
+    }),
+    extractContext: requesterContext,
+  }
+}
+
+/**
+ * Resolve the HubSpot connection from config, or undefined when it isn't configured
+ * or is toggled off. Poll-only (Conversations threads). Identity is the visitor id
+ * from the message actor — trusted for L1 continuity only, so account investigation
+ * (L2) is off: HubSpot's Visitor-ID isn't a merchant account id.
+ */
+export function buildHubSpotConnection(config: HelpuitConfig): PlatformConnection | undefined {
+  if (config.hubspot === undefined || !config.integrations.hubspot) return undefined
+  const hs = { accessToken: config.hubspot.accessToken, senderActorId: config.hubspot.senderActorId, baseUrl: config.hubspot.baseUrl }
+  const poller = new HubSpotPoller(hs)
+  return {
+    connectionId: 'hubspot',
+    client: new HttpHubSpotClient(hs),
+    poll: (sinceIso) => poller.poll(sinceIso),
+    parse: parsePolledMessage,
+    identity: new IdentityResolver({ verify: (visitorId) => Promise.resolve(visitorId ? { userId: visitorId } : null) }),
+    extractContext: requesterContext,
+    disableAccount: true,
+  }
+}
+
+/**
+ * Resolve the Zendesk connection from config, or undefined when it isn't configured
+ * or is toggled off. Webhook-based (a trigger POSTs our payload): the signature is
+ * HMAC-SHA256 over timestamp+body; identity is the requester's external_id (else
+ * email), trusted as Zendesk-managed. Loop-safety lives in the parse (public end-user
+ * comments only).
+ */
+export function buildZendeskConnection(config: HelpuitConfig): PlatformConnection | undefined {
+  if (config.zendesk === undefined || !config.integrations.zendesk) return undefined
+  const zd = config.zendesk
+  const webhookSecret = zd.webhookSecret
+  return {
+    connectionId: 'zendesk',
+    client: new HttpZendeskClient({ baseUrl: `https://${zd.subdomain}.zendesk.com/api/v2`, email: zd.email, apiToken: zd.apiToken }),
+    parse: parseZendesk,
+    verify:
+      webhookSecret !== undefined && webhookSecret !== ''
+        ? (rawBody, headers) => {
+            const sig = headers['x-zendesk-webhook-signature']
+            const ts = headers['x-zendesk-webhook-signature-timestamp']
+            return verifyZendeskSignature(
+              rawBody,
+              Array.isArray(ts) ? ts[0] : ts,
+              webhookSecret,
+              Array.isArray(sig) ? sig[0] : sig,
+            )
+          }
+        : undefined,
+    identity: new IdentityResolver({ verify: (userId) => Promise.resolve(userId ? { userId } : null) }),
+    extractContext: (payload) => {
+      const p = payload as { requester_external_id?: string; requester_email?: string }
+      return { customAttributes: { [AUTH_TOKEN_KEY]: p.requester_external_id ?? p.requester_email } }
+    },
+  }
 }
 
 function toVerifierConfig(identity: HelpuitConfig['identity']): TokenVerifierConfig {
@@ -90,21 +240,28 @@ function toVerifierConfig(identity: HelpuitConfig['identity']): TokenVerifierCon
 }
 
 /**
- * Wire the production Orchestrator from validated config + a live database.
- * Every collaborator here is a REAL adapter: HTTP Chatwoot client, the
- * provider-agnostic LLM-backed guidance model, the config-selected identity
- * verifier, and Drizzle-backed repositories.
+ * Wire the production engine (the "new brain") from validated config + a live
+ * database. Every collaborator is a REAL adapter: HTTP support clients, metered
+ * provider-agnostic LLM tiers, the config-selected identity verifier, and
+ * Drizzle-backed repositories.
  *
- * Deeper capabilities (account investigation, static investigation, escalation,
- * GitHub-backed known-issue dedup) attach in their own batches; until then the
- * spine runs the L1 guidance path and the known-issue check is a no-op.
+ * Planner runs on the reasoning tier, the Composer (the only customer voice) on
+ * the cheap guidance tier, and the Policy Kernel gates every directive against
+ * identity, capabilities, per-case budget, and pending consent. Semantic
+ * features (case embedding, known-issue matching) wire only when
+ * `models.embedding` resolves — absent, they degrade silently.
  */
-export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps): Orchestrator {
-  const client = new HttpChatwootClient({
-    baseUrl: config.chatwoot.baseUrl,
-    accountId: config.chatwoot.accountId,
-    apiAccessToken: config.chatwoot.apiToken,
-  })
+export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps): PlannerEngine {
+  // Default connection = Chatwoot (bare conversationIds). A `connection` override
+  // (e.g. Intercom) swaps the reply client + injects that platform's parse and
+  // namespace so its state never collides with another connection's.
+  const client =
+    deps.connection?.client ??
+    new HttpChatwootClient({
+      baseUrl: config.chatwoot.baseUrl,
+      accountId: config.chatwoot.accountId,
+      apiAccessToken: config.chatwoot.apiToken,
+    })
 
   // Identity OFF → the verifier never resolves a user, so everyone is anonymous
   // (allowAnonymous is forced on below). This is the "behaves as if not set up" pause.
@@ -113,7 +270,6 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
       ? createTokenVerifier(toVerifierConfig(config.identity))
       : { verify: () => Promise.resolve(null) },
   )
-  const investigations = new DrizzleInvestigationRepository(deps.db)
   const ticketing = new DrizzleTicketing(deps.db)
   const control = new DrizzleControlStore(deps.db)
 
@@ -152,6 +308,19 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
   // GitHub auth (static PAT or App installation tokens) — single source of truth.
   const githubOptions = githubOptionsFromConfig(config)
 
+  // Semantic layer: resolves only when models.embedding is configured for an
+  // OpenAI-style provider. Absent → case embedding + known-issue matching are off.
+  const embedding = buildEmbedder(config)
+  const vectors = embedding !== undefined ? new DrizzleEmbeddingRepository(deps.db) : undefined
+
+  // The Case store. With an embedder, case memory joins the semantic match pool on
+  // save and leaves it when the case concludes.
+  const drizzleInvestigations = new DrizzleInvestigationRepository(deps.db)
+  const investigations =
+    embedding !== undefined && vectors !== undefined
+      ? withCaseEmbedding(drizzleInvestigations, { embedder: embedding.embedder, store: vectors, model: embedding.model })
+      : drizzleInvestigations
+
   // Prefer the shared live index (operator-ingested docs, survives rebuilds);
   // otherwise build one from the docs passed at construction.
   let docsIndex: DocsIndex
@@ -162,18 +331,6 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
     built.ingest(deps.docs ?? [])
     docsIndex = built
   }
-  // Ground L1 guidance in the resolved feature's real code when a confirmed
-  // manifest is available (issue 27) — degrades to docs-only otherwise.
-  // GitHub OFF → no code grounding (the retriever would hit GitHub).
-  const codeContext =
-    config.integrations.github && deps.manifest !== undefined
-      ? new ManifestCodeContextProvider(deps.manifest, new GitHubCodeRetriever(githubOptions))
-      : undefined
-  const guidance = new GuidanceAgent(
-    docsIndex,
-    createGuidanceModel(meter(router.forTier('guidance'))),
-    codeContext,
-  )
 
   // L2 account investigation — pick the data source: a connected Supabase project
   // (direct REST), a direct Postgres URL, or the legacy customer-deployed query
@@ -218,24 +375,25 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
     accountInvestigation = new AccountInvestigator(new QueryRouteClient(catalog, executor), queries, accountModel())
   }
 
-  // L3a static code investigation — wired when a confirmed manifest is available
-  // AND GitHub is on (it fetches suspect source from the repo).
-  let staticInvestigation: StaticInvestigationPort | undefined
+  // The Code Analyst — wired when a confirmed manifest is available AND GitHub is
+  // on (it fetches suspect source from the repo). Strictly siloed: the engine keeps
+  // its technical layer in case memory; only the customer-safe explanation composes.
+  let codeAnalyst: CodeAnalystPort | undefined
   if (config.integrations.github && deps.manifest !== undefined) {
-    staticInvestigation = new StaticCodeInvestigator(
+    codeAnalyst = new StaticCodeInvestigator(
       deps.manifest,
       new GitHubCodeRetriever(githubOptions),
       createStaticAnalysisModel(meter(router.forTier('reasoning'))),
     )
   }
 
-  // L3b dynamic reproduction — wired only when the founder enabled Playwright, a
+  // Dynamic reproduction — wired only when the founder enabled Playwright, a
   // browser driver is available, and sandbox creds exist (else undefined = off).
   const reproduction = buildReproductionRunner(config, { db: deps.db, browserDriver: deps.browserDriver })
 
-  // L3a → L4 escalation pipeline: dedup + (optionally) reproduce + file/link a real
-  // GitHub issue. The tracker is wrapped in a redaction gate so no PII/secrets reach
-  // GitHub even if an upstream summary slips.
+  // Consent-gated escalation pipeline: dedup + (optionally) reproduce + file/link a
+  // real GitHub issue. The tracker is wrapped in a redaction gate so no PII/secrets
+  // reach GitHub even if an upstream summary slips.
   // GitHub OFF → a no-op tracker/search; an escalation becomes a draft (autopublish
   // forced off) and nothing is ever filed or searched on GitHub.
   const escalation: EscalationPort = new EscalationPipeline({
@@ -250,26 +408,41 @@ export function buildOrchestrator(config: HelpuitConfig, deps: CompositionDeps):
   // Persist drafted issues (autopublish=draft) for founder approval in the console.
   const draftStore = new DrizzleDraftRepository(deps.db)
 
-  // GitHub-backed intake dedup is approximate (no signature at intake); off for now.
-  const knownIssue = async (): Promise<MatchVerdict> => ({ verdict: 'none', issue: null })
+  // Semantic known-issue matcher: nearest embedded open issue + a cheap confirm.
+  // Runs once per fresh case; no embedder → the flow is silently absent.
+  const knownIssue =
+    embedding !== undefined && vectors !== undefined
+      ? new KnownIssueMatcher({
+          embedder: embedding.embedder,
+          store: vectors,
+          chat: meter(router.forTier('guidance')),
+          model: embedding.model,
+        })
+      : undefined
 
-  return new Orchestrator({
+  return new PlannerEngine({
+    planner: new Planner(meter(router.forTier('reasoning'))),
+    composer: new Composer(meter(router.forTier('guidance'))),
+    kernel: new PolicyKernel({ audit, governor }),
+    docs: docsIndex,
     client,
-    identity,
-    investigations,
-    guidance,
-    ticketing,
-    audit,
+    parse: deps.connection?.parse,
+    connectionId: deps.connection?.connectionId,
+    // A connection can bring its own identity (e.g. Intercom trusts external_id); else Chatwoot's.
+    identity: deps.connection?.identity ?? identity,
+    control,
+    // A weak-identity connection (e.g. HubSpot Visitor-ID) opts out of account investigation.
+    account: deps.connection?.disableAccount === true ? undefined : accountInvestigation,
+    codeAnalyst,
     knownIssue,
-    accountInvestigation,
-    staticInvestigation,
     escalation,
     draftStore,
-    control,
+    ticketing,
+    investigations,
+    audit,
     config: {
       // Identity OFF → open the anonymous gate (the verifier already resolves nobody).
       allowAnonymous: config.policy.allowAnonymous || !config.integrations.identity,
-      guidanceThreshold: GUIDANCE_THRESHOLD,
     },
   })
 }

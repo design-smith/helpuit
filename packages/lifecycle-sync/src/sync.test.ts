@@ -52,8 +52,8 @@ describe('shouldNotifyCustomer', () => {
 describe('LifecycleSync.handleEvent', () => {
   async function withLinkedTickets(mode: 'auto' | 'manual') {
     const ticketing = new InMemoryTicketing()
-    const a = await ticketing.create({ investigationId: 'inv-1', conversationId: 11 })
-    const b = await ticketing.create({ investigationId: 'inv-2', conversationId: 22 })
+    const a = await ticketing.create({ investigationId: 'inv-1', conversationId: '11' })
+    const b = await ticketing.create({ investigationId: 'inv-2', conversationId: '22' })
     await ticketing.linkToIssue(a.id, 42)
     await ticketing.linkToIssue(b.id, 42)
     const client = new FakeChatwootClient()
@@ -68,7 +68,7 @@ describe('LifecycleSync.handleEvent', () => {
       closeReason: 'completed',
     })
     expect(outcome.notified).toBe(2)
-    expect(client.replies.map((r) => r.conversationId).sort()).toEqual([11, 22])
+    expect(client.replies.map((r) => r.conversationId).sort()).toEqual(['11', '22'])
     expect(client.notes).toHaveLength(2)
   })
 

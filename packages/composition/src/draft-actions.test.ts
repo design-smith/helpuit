@@ -40,10 +40,10 @@ async function setup(draftBody = '## Summary\nIt broke') {
   const auditRepo = new DrizzleAuditRepository(db)
   const fake = new FakeTracker()
 
-  const inv = await investigations.create({ conversationId: 7 })
+  const inv = await investigations.create({ conversationId: '7' })
   const draft = await drafts.save({
     investigationId: inv.id,
-    conversationId: 7,
+    conversationId: '7',
     title: '[new_bug] Export broken',
     body: draftBody,
     labels: ['helpuit', 'new_bug'],

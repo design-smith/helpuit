@@ -10,6 +10,6 @@ export interface ChatwootInboundEvent {
 
 /** Normalized inbound customer message extracted from a webhook payload. */
 export interface InboundMessage {
-  conversationId: number
+  conversationId: string
   content: string
 }

@@ -47,6 +47,7 @@ export function DocumentsPage() {
   const [confirmId, setConfirmId] = useState<string | null>(null)
   /** Which unconfigured provider's setup form is revealed (null = none). */
   const [setupOpen, setSetupOpen] = useState<'dropbox' | 'gdrive' | 'sharepoint' | null>(null)
+  const [linkUrl, setLinkUrl] = useState('')
 
   const docsConfig = config.data?.config?.docs as Record<string, unknown> | undefined
   const dropboxAppKey = docsConfig?.dropboxAppKey as string | undefined
@@ -217,6 +218,27 @@ export function DocumentsPage() {
           {setupOpen === 'sharepoint' && microsoftClientId === undefined && (
             <OneDriveSetup currentDocs={docsConfig} disabled={config.isPending} open onToggle={() => setSetupOpen(null)} />
           )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t-2 border-border pt-3">
+            <Input
+              className="w-full max-w-md"
+              placeholder="https://yoursite.com/docs — scraped server-side, refreshed daily"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+            />
+            <Button
+              disabled={busy || !/^https?:\/\/\S+$/i.test(linkUrl.trim())}
+              onClick={() => {
+                const url = linkUrl.trim()
+                setLinkUrl('')
+                void runImports([
+                  { label: url, produce: async () => ({ source: 'link', externalId: url } as unknown as DocUpload) },
+                ])
+              }}
+            >
+              Add link
+            </Button>
+          </div>
         </div>
 
         {busy && (

@@ -4,6 +4,7 @@ import type { HelpuitConfig } from '@helpuit/config'
 import { DocsService } from './docs-service.js'
 import { RepoDocsLoader } from './repo-docs-loader.js'
 import { githubOptionsFromConfig } from './github-options.js'
+import { buildEmbedder } from './embedder.js'
 
 /**
  * Production factory for the L1 docs surface: a store-backed {@link DocsService}
@@ -14,7 +15,13 @@ import { githubOptionsFromConfig } from './github-options.js'
  * unauthed repo degrades to the persisted docs alone, never crashing boot.
  */
 export async function provisionDocs(config: HelpuitConfig, deps: { db: Db }): Promise<DocsService> {
-  const service = await DocsService.create(deps.db)
+  // models.embedding configured → the live index is semantic (vectors persisted in
+  // the DB, token-overlap fallback for anything unembedded). Absent → unchanged.
+  const embedding = buildEmbedder(config)
+  const service = await DocsService.create(
+    deps.db,
+    embedding !== undefined ? { embedder: embedding.embedder, embeddingModel: embedding.model } : {},
+  )
   const repoPaths = config.docs.repoPaths
   if (repoPaths.length > 0) {
     const options = githubOptionsFromConfig(config)

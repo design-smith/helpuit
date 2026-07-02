@@ -1,9 +1,14 @@
 import type { EffectiveConfigView } from '../../lib/api'
 
-export type IntegrationId = 'github' | 'chatwoot' | 'llm'
+export type IntegrationId = 'github' | 'chatwoot' | 'intercom' | 'freshdesk' | 'hubspot' | 'zendesk' | 'llm'
+
+/** The collapsible Connections section an integration belongs to. */
+export type IntegrationCategory = 'support' | 'code' | 'intelligence'
 
 export interface IntegrationStatus {
   id: IntegrationId
+  /** Which Connections section this card groups under. */
+  category: IntegrationCategory
   label: string
   /** Credentials present → the integration CAN run (the Connect step is done). */
   connected: boolean
@@ -56,6 +61,7 @@ export function integrationStatuses(view: EffectiveConfigView): IntegrationStatu
   return [
     {
       id: 'github',
+      category: 'code',
       // Connected only once credentials AND a chosen repo are present — so the card
       // flips to a toggle when the operator has actually picked the repo to use.
       label: 'GitHub',
@@ -70,6 +76,7 @@ export function integrationStatuses(view: EffectiveConfigView): IntegrationStatu
     },
     {
       id: 'chatwoot',
+      category: 'support',
       label: 'Chatwoot',
       connected: isSet('CHATWOOT_API_TOKEN'),
       enabled: enabled('chatwoot'),
@@ -81,7 +88,48 @@ export function integrationStatuses(view: EffectiveConfigView): IntegrationStatu
           : undefined,
     },
     {
+      id: 'intercom',
+      category: 'support',
+      label: 'Intercom',
+      // A webhook platform: connected once its access token + the admin id are set.
+      connected: isSet('INTERCOM_ACCESS_TOKEN') && Boolean(cfg.intercom?.adminId),
+      enabled: enabled('intercom'),
+      issue: issueOf('intercom'),
+      account: cfg.intercom?.adminId ? `admin ${cfg.intercom.adminId}` : undefined,
+      access: cfg.intercom?.baseUrl,
+    },
+    {
+      id: 'freshdesk',
+      category: 'support',
+      label: 'Freshdesk',
+      // A poll-only platform: connected once its API key + subdomain are set.
+      connected: isSet('FRESHDESK_API_KEY') && Boolean(cfg.freshdesk?.domain),
+      enabled: enabled('freshdesk'),
+      issue: issueOf('freshdesk'),
+      account: cfg.freshdesk?.domain ? `${cfg.freshdesk.domain}.freshdesk.com` : undefined,
+    },
+    {
+      id: 'hubspot',
+      category: 'support',
+      label: 'HubSpot',
+      connected: isSet('HUBSPOT_ACCESS_TOKEN') && Boolean(cfg.hubspot?.senderActorId),
+      enabled: enabled('hubspot'),
+      issue: issueOf('hubspot'),
+      account: cfg.hubspot?.senderActorId ? `actor ${cfg.hubspot.senderActorId}` : undefined,
+    },
+    {
+      id: 'zendesk',
+      category: 'support',
+      label: 'Zendesk',
+      connected: isSet('ZENDESK_API_TOKEN') && Boolean(cfg.zendesk?.subdomain),
+      enabled: enabled('zendesk'),
+      issue: issueOf('zendesk'),
+      account: cfg.zendesk?.subdomain ? `${cfg.zendesk.subdomain}.zendesk.com` : undefined,
+      access: cfg.zendesk?.email,
+    },
+    {
       id: 'llm',
+      category: 'intelligence',
       label: 'LLM provider',
       connected: provider !== undefined ? isSet(LLM_KEY[provider] ?? '') : false,
       enabled: enabled('llm'),

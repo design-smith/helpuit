@@ -4,15 +4,23 @@ import { integrationStatuses, availableLlmProviders } from './integration-status
 
 const view: EffectiveConfigView = {
   config: {
-    integrations: { github: true, chatwoot: false, identity: true, llm: true },
+    integrations: { github: true, chatwoot: false, intercom: true, freshdesk: true, hubspot: false, zendesk: true, identity: true, llm: true },
     github: { owner: 'acme', repo: 'product' },
     chatwoot: { baseUrl: 'https://chat.acme.com', accountId: 3, inboxId: 2 },
+    intercom: { adminId: 'bot-1' },
+    freshdesk: { domain: 'acme' },
+    hubspot: { senderActorId: 'A-42' },
+    zendesk: { subdomain: 'acme', email: 'me@x.com' },
     identity: { mode: 'jwt', useridClaim: 'sub' },
     models: { provider: 'anthropic', tiers: { guidance: { model: 'claude' } } },
   },
   secrets: [
     { key: 'GITHUB_TOKEN', set: true, required: true, source: 'vault' },
     { key: 'CHATWOOT_API_TOKEN', set: true, required: true, source: 'env' },
+    { key: 'INTERCOM_ACCESS_TOKEN', set: true, required: true, source: 'vault' },
+    { key: 'FRESHDESK_API_KEY', set: true, required: true, source: 'vault' },
+    { key: 'HUBSPOT_ACCESS_TOKEN', set: true, required: true, source: 'vault' },
+    { key: 'ZENDESK_API_TOKEN', set: true, required: true, source: 'vault' },
     { key: 'ANTHROPIC_API_KEY', set: true, required: true, source: 'vault' },
   ],
   structuralIssues: ['identity.jwksUrl is required when identity.mode = jwt'],
@@ -35,7 +43,38 @@ describe('integrationStatuses', () => {
 
   it('does NOT include identity — it is configured in setup / Configuration, not as a Connections card', () => {
     expect(byId.identity).toBeUndefined()
-    expect(integrationStatuses(view).map((s) => s.id)).toEqual(['github', 'chatwoot', 'llm'])
+    expect(integrationStatuses(view).map((s) => s.id)).toEqual([
+      'github',
+      'chatwoot',
+      'intercom',
+      'freshdesk',
+      'hubspot',
+      'zendesk',
+      'llm',
+    ])
+  })
+
+  it('reports each support platform connected from its own secret + config block', () => {
+    expect(byId.intercom).toMatchObject({ connected: true, enabled: true, account: expect.stringContaining('bot-1') })
+    expect(byId.freshdesk).toMatchObject({ connected: true, enabled: true, account: 'acme.freshdesk.com' })
+    expect(byId.zendesk).toMatchObject({ connected: true, enabled: true, account: 'acme.zendesk.com', access: 'me@x.com' })
+  })
+
+  it('reflects a connected-but-disabled platform (HubSpot off)', () => {
+    expect(byId.hubspot).toMatchObject({ connected: true, enabled: false })
+  })
+
+  it('categorizes each integration for the Connections sections', () => {
+    expect(byId.github!.category).toBe('code')
+    expect(byId.llm!.category).toBe('intelligence')
+    for (const id of ['chatwoot', 'intercom', 'freshdesk', 'hubspot', 'zendesk']) {
+      expect(byId[id]!.category).toBe('support')
+    }
+  })
+
+  it('is not connected when the secret is set but the config block is missing', () => {
+    const noBlock = integrationStatuses({ ...view, config: { ...view.config, zendesk: undefined } }).find((s) => s.id === 'zendesk')!
+    expect(noBlock.connected).toBe(false)
   })
 
   it('maps the LLM provider to its credential and model', () => {

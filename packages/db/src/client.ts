@@ -83,10 +83,17 @@ export async function createDb(url = ':memory:', options: CreateDbOptions = {}):
  * CREATE block, which is a no-op on a table that predates the columns).
  */
 export async function ensureColumns(client: Client): Promise<void> {
+  const tableExists = async (table: string): Promise<boolean> =>
+    (await client.execute(`PRAGMA table_info(${table})`)).rows.length > 0
+
   for (const { table, column, type } of COLUMN_BACKFILL) {
+    // A missing table belongs to the CREATE block, not the backfill.
+    if (!(await tableExists(table))) continue
     const info = await client.execute(`PRAGMA table_info(${table})`)
     const present = info.rows.some((row) => (row as { name?: unknown }).name === column)
     if (!present) await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
   }
-  for (const sql of BACKFILL_INDEXES) await client.execute(sql)
+  for (const index of BACKFILL_INDEXES) {
+    if (await tableExists(index.table)) await client.execute(index.sql)
+  }
 }

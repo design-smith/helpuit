@@ -50,6 +50,14 @@ export interface HelpuitConfig {
     databaseUrl?: string
   }
   chatwoot: Structured['chatwoot'] & { apiToken: string }
+  /** Present only when the YAML has an `intercom` block. accessToken replies; clientSecret verifies webhooks. */
+  intercom?: NonNullable<Structured['intercom']> & { accessToken: string; clientSecret?: string }
+  /** Present only when the YAML has a `freshdesk` block. apiKey authenticates polling + replies (Basic auth). */
+  freshdesk?: NonNullable<Structured['freshdesk']> & { apiKey: string }
+  /** Present only when the YAML has a `hubspot` block. accessToken is the private-app token (Bearer). */
+  hubspot?: NonNullable<Structured['hubspot']> & { accessToken: string }
+  /** Present only when the YAML has a `zendesk` block. apiToken authenticates the API; webhookSecret verifies webhooks. */
+  zendesk?: NonNullable<Structured['zendesk']> & { apiToken: string; webhookSecret?: string }
   github: Structured['github'] & {
     token: string
     webhookSecret?: string
@@ -178,6 +186,30 @@ function bindConfig(raw: unknown, env: Env, opts: { lenient: boolean }): BindRes
   const chatwootToken = requireSecret('CHATWOOT_API_TOKEN')
   const githubToken = requireSecret('GITHUB_TOKEN')
 
+  let intercom: HelpuitConfig['intercom']
+  if (cfg.intercom !== undefined) {
+    intercom = {
+      ...cfg.intercom,
+      accessToken: requireSecret('INTERCOM_ACCESS_TOKEN'),
+      clientSecret: env.INTERCOM_CLIENT_SECRET,
+    }
+  }
+
+  let freshdesk: HelpuitConfig['freshdesk']
+  if (cfg.freshdesk !== undefined) {
+    freshdesk = { ...cfg.freshdesk, apiKey: requireSecret('FRESHDESK_API_KEY') }
+  }
+
+  let hubspot: HelpuitConfig['hubspot']
+  if (cfg.hubspot !== undefined) {
+    hubspot = { ...cfg.hubspot, accessToken: requireSecret('HUBSPOT_ACCESS_TOKEN') }
+  }
+
+  let zendesk: HelpuitConfig['zendesk']
+  if (cfg.zendesk !== undefined) {
+    zendesk = { ...cfg.zendesk, apiToken: requireSecret('ZENDESK_API_TOKEN'), webhookSecret: env.ZENDESK_WEBHOOK_SECRET }
+  }
+
   let identitySecret: string | undefined
   let verifyToken: string | undefined
   if (cfg.identity.mode === 'hmac') {
@@ -243,6 +275,10 @@ function bindConfig(raw: unknown, env: Env, opts: { lenient: boolean }): BindRes
   const config: HelpuitConfig = {
     runtime,
     chatwoot: { ...cfg.chatwoot, apiToken: chatwootToken },
+    intercom,
+    freshdesk,
+    hubspot,
+    zendesk,
     github: {
       ...cfg.github,
       token: githubToken,
@@ -338,6 +374,18 @@ export function maskConfig(config: HelpuitConfig): Record<string, unknown> {
   return {
     runtime: config.runtime,
     chatwoot: { ...config.chatwoot, apiToken: mask(config.chatwoot.apiToken) },
+    intercom:
+      config.intercom !== undefined
+        ? { ...config.intercom, accessToken: mask(config.intercom.accessToken), clientSecret: mask(config.intercom.clientSecret) }
+        : undefined,
+    freshdesk:
+      config.freshdesk !== undefined ? { ...config.freshdesk, apiKey: mask(config.freshdesk.apiKey) } : undefined,
+    hubspot:
+      config.hubspot !== undefined ? { ...config.hubspot, accessToken: mask(config.hubspot.accessToken) } : undefined,
+    zendesk:
+      config.zendesk !== undefined
+        ? { ...config.zendesk, apiToken: mask(config.zendesk.apiToken), webhookSecret: mask(config.zendesk.webhookSecret) }
+        : undefined,
     github: {
       ...config.github,
       token: mask(config.github.token),

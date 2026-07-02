@@ -26,7 +26,7 @@ export interface InvestigationListFilter {
   status?: InvestigationStatus
   level?: InvestigationLevel
   classification?: Classification
-  conversationId?: number
+  conversationId?: string
   customerId?: string
   createdAfter?: number
   createdBefore?: number
@@ -80,6 +80,7 @@ export class DrizzleInvestigationRepository implements InvestigationRepository {
       level: 'guidance',
       classification: null,
       confidence: null,
+      caseJson: null,
       createdAt: ts,
       updatedAt: ts,
     }
@@ -91,6 +92,30 @@ export class DrizzleInvestigationRepository implements InvestigationRepository {
     const rows = await this.db.select().from(investigations).where(eq(investigations.id, id))
     const row = rows[0]
     return row === undefined ? null : toInvestigation(row)
+  }
+
+  /** The Case: the conversation's open investigation, reused across turns (never a concluded one). */
+  async getOrCreateForConversation(conversationId: string, customerId?: string): Promise<Investigation> {
+    const rows = await this.db
+      .select()
+      .from(investigations)
+      .where(and(eq(investigations.conversationId, conversationId), eq(investigations.status, 'open')))
+      .orderBy(desc(investigations.createdAt))
+      .limit(1)
+    const row = rows[0]
+    return row !== undefined ? toInvestigation(row) : this.create({ conversationId, customerId })
+  }
+
+  async loadCase(id: InvestigationId): Promise<string | null> {
+    const rows = await this.db
+      .select({ caseJson: investigations.caseJson })
+      .from(investigations)
+      .where(eq(investigations.id, id))
+    return rows[0]?.caseJson ?? null
+  }
+
+  async saveCase(id: InvestigationId, json: string): Promise<void> {
+    await this.patch(id, { caseJson: json })
   }
 
   /** Paginated, filtered list for the operator console (newest first by default). */

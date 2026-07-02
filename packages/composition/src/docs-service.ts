@@ -1,5 +1,5 @@
-import { DrizzleDocsRepository, type Db, type AddDocInput, type DocRecord, type DocSource } from '@helpuit/db'
-import { InMemoryDocsIndex, type Doc, type DocsIndex } from '@helpuit/guidance'
+import { DrizzleDocsRepository, DrizzleEmbeddingRepository, type Db, type AddDocInput, type DocRecord, type DocSource } from '@helpuit/db'
+import { InMemoryDocsIndex, SemanticDocsIndex, type Doc, type DocsIndex, type EmbeddingPort } from '@helpuit/guidance'
 
 function toDoc(record: DocRecord): Doc {
   return { id: record.id, text: record.text, title: record.title ?? undefined }
@@ -15,16 +15,32 @@ function toDoc(record: DocRecord): Doc {
 export class DocsService {
   private constructor(
     private readonly repo: DrizzleDocsRepository,
-    private readonly docsIndex: InMemoryDocsIndex,
+    private readonly docsIndex: InMemoryDocsIndex | SemanticDocsIndex,
   ) {}
 
-  /** Build the service over the live DB and warm the index from persisted docs. */
-  static async create(db: Db): Promise<DocsService> {
+  /**
+   * Build the service over the live DB and warm the index from persisted docs.
+   * With an embedder configured, retrieval upgrades to the semantic index (same
+   * interface, token-overlap fallback inside); without one, behavior is unchanged.
+   */
+  static async create(db: Db, options: { embedder?: EmbeddingPort; embeddingModel?: string } = {}): Promise<DocsService> {
     const repo = new DrizzleDocsRepository(db)
-    const index = new InMemoryDocsIndex()
+    const index =
+      options.embedder !== undefined
+        ? new SemanticDocsIndex({
+            embedder: options.embedder,
+            store: new DrizzleEmbeddingRepository(db),
+            model: options.embeddingModel ?? 'default',
+          })
+        : new InMemoryDocsIndex()
     const service = new DocsService(repo, index)
     index.ingest((await repo.list()).map(toDoc))
     return service
+  }
+
+  /** Await in-flight embedding work (tests + sweeps); a no-op on the in-memory index. */
+  async flush(): Promise<void> {
+    if (this.docsIndex instanceof SemanticDocsIndex) await this.docsIndex.flush()
   }
 
   /** The live docs index to ground L1 guidance; pass to `buildOrchestrator`. */

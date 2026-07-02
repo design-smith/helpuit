@@ -9,8 +9,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@helpuit/assessment": "workspace:*",
     "@helpuit/audit": "workspace:*",
+    "@helpuit/budget": "workspace:*",
     "@helpuit/chatwoot": "workspace:*",
     "@helpuit/classification": "workspace:*",
     "@helpuit/contracts": "workspace:*",
@@ -20,6 +20,7 @@
     "@helpuit/identity": "workspace:*",
     "@helpuit/investigation-store": "workspace:*",
     "@helpuit/output-rail": "workspace:*",
-    "@helpuit/ticketing": "workspace:*"
+    "@helpuit/ticketing": "workspace:*",
+    "zod": "^3.23.8"
   }
 }

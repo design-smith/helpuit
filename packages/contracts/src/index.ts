@@ -50,7 +50,8 @@ export type InvestigationLevel = z.infer<typeof InvestigationLevel>
 /** Core domain entity: one customer issue under investigation. */
 export interface Investigation {
   id: InvestigationId
-  conversationId: number
+  /** Platform-namespaced conversation key (e.g. `chatwoot:7`); string to span every platform. */
+  conversationId: string
   customerId: string | null
   status: InvestigationStatus
   level: InvestigationLevel

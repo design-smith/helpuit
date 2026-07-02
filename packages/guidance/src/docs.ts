@@ -17,7 +17,8 @@ export interface DocsIndex {
   upsert(doc: Doc): void
   /** Drop a doc from the index by id. */
   removeById(id: string): void
-  retrieve(query: string, k?: number): DocChunk[]
+  /** Sync for the in-memory index; async once the semantic index is wired. */
+  retrieve(query: string, k?: number): DocChunk[] | Promise<DocChunk[]>
 }
 
 function tokenize(text: string): string[] {

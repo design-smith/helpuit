@@ -259,8 +259,6 @@ importers:
         specifier: workspace:*
         version: link:../query-routes
 
-  packages/assessment: {}
-
   packages/audit: {}
 
   packages/budget: {}
@@ -312,15 +310,24 @@ importers:
       '@helpuit/feature-manifest':
         specifier: workspace:*
         version: link:../feature-manifest
+      '@helpuit/freshdesk':
+        specifier: workspace:*
+        version: link:../freshdesk
       '@helpuit/github':
         specifier: workspace:*
         version: link:../github
       '@helpuit/guidance':
         specifier: workspace:*
         version: link:../guidance
+      '@helpuit/hubspot':
+        specifier: workspace:*
+        version: link:../hubspot
       '@helpuit/identity':
         specifier: workspace:*
         version: link:../identity
+      '@helpuit/intercom':
+        specifier: workspace:*
+        version: link:../intercom
       '@helpuit/lifecycle-sync':
         specifier: workspace:*
         version: link:../lifecycle-sync
@@ -348,6 +355,9 @@ importers:
       '@helpuit/ticketing':
         specifier: workspace:*
         version: link:../ticketing
+      '@helpuit/zendesk':
+        specifier: workspace:*
+        version: link:../zendesk
 
   packages/config:
     dependencies:
@@ -416,6 +426,15 @@ importers:
 
   packages/feature-manifest: {}
 
+  packages/freshdesk:
+    dependencies:
+      '@helpuit/chatwoot':
+        specifier: workspace:*
+        version: link:../chatwoot
+      '@helpuit/resilience':
+        specifier: workspace:*
+        version: link:../resilience
+
   packages/github:
     dependencies:
       '@helpuit/crypto':
@@ -440,11 +459,29 @@ importers:
         specifier: workspace:*
         version: link:../feature-manifest
 
+  packages/hubspot:
+    dependencies:
+      '@helpuit/chatwoot':
+        specifier: workspace:*
+        version: link:../chatwoot
+      '@helpuit/resilience':
+        specifier: workspace:*
+        version: link:../resilience
+
   packages/identity:
     dependencies:
       jose:
         specifier: ^5.9.6
         version: 5.10.0
+
+  packages/intercom:
+    dependencies:
+      '@helpuit/chatwoot':
+        specifier: workspace:*
+        version: link:../chatwoot
+      '@helpuit/resilience':
+        specifier: workspace:*
+        version: link:../resilience
 
   packages/investigation-store:
     dependencies:
@@ -508,12 +545,12 @@ importers:
 
   packages/orchestrator:
     dependencies:
-      '@helpuit/assessment':
-        specifier: workspace:*
-        version: link:../assessment
       '@helpuit/audit':
         specifier: workspace:*
         version: link:../audit
+      '@helpuit/budget':
+        specifier: workspace:*
+        version: link:../budget
       '@helpuit/chatwoot':
         specifier: workspace:*
         version: link:../chatwoot
@@ -544,6 +581,9 @@ importers:
       '@helpuit/ticketing':
         specifier: workspace:*
         version: link:../ticketing
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
 
   packages/output-rail:
     dependencies:
@@ -617,6 +657,15 @@ importers:
         version: link:../feature-manifest
 
   packages/ticketing: {}
+
+  packages/zendesk:
+    dependencies:
+      '@helpuit/chatwoot':
+        specifier: workspace:*
+        version: link:../chatwoot
+      '@helpuit/resilience':
+        specifier: workspace:*
+        version: link:../resilience
 
 packages:
 

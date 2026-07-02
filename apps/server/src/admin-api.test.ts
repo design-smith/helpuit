@@ -37,10 +37,10 @@ async function start() {
   handle = await createDb(':memory:')
   const investigations = new DrizzleInvestigationRepository(handle.db)
   const drafts = new DrizzleDraftRepository(handle.db)
-  const inv = await investigations.create({ conversationId: 7, customerId: 'u1' })
+  const inv = await investigations.create({ conversationId: '7', customerId: 'u1' })
   const draft = await drafts.save({
     investigationId: inv.id,
-    conversationId: 7,
+    conversationId: '7',
     title: '[new_bug] broken',
     body: 'summary',
     labels: ['helpuit'],
@@ -92,7 +92,7 @@ describe('admin API', () => {
     handle = await createDb(':memory:')
     const investigations = new DrizzleInvestigationRepository(handle.db)
     const links = new DrizzleGithubLinks(handle.db)
-    const inv = await investigations.create({ conversationId: 9, customerId: 'u9' })
+    const inv = await investigations.create({ conversationId: '9', customerId: 'u9' })
     await links.link({ investigationId: inv.id, issueNumber: 42, issueUrl: 'https://github.com/o/r/issues/42' })
 
     const api = buildAdminApi(config, { db: handle.db })
@@ -112,7 +112,7 @@ describe('admin API', () => {
   it('serves the live Chatwoot transcript for a conversation, and 404s an unknown one', async () => {
     handle = await createDb(':memory:')
     const investigations = new DrizzleInvestigationRepository(handle.db)
-    const inv = await investigations.create({ conversationId: 55, customerId: 'u' })
+    const inv = await investigations.create({ conversationId: '55', customerId: 'u' })
 
     const chat = createServer((req, res) => {
       res.setHeader('content-type', 'application/json')
@@ -156,7 +156,7 @@ describe('admin API', () => {
     handle = await createDb(':memory:')
     const investigations = new DrizzleInvestigationRepository(handle.db)
     const links = new DrizzleGithubLinks(handle.db)
-    const inv = await investigations.create({ conversationId: 1, customerId: 'u' })
+    const inv = await investigations.create({ conversationId: '1', customerId: 'u' })
     await links.link({ investigationId: inv.id, issueNumber: 42, issueUrl: 'https://gh/issues/42' })
 
     const gh = createServer((_req, res) => {
@@ -197,7 +197,7 @@ describe('admin API', () => {
     const audit = new DrizzleAuditRepository(handle.db)
     const queue = new DrizzleJobQueue(handle.db)
 
-    const inv = await investigations.create({ conversationId: 77, customerId: 'u' })
+    const inv = await investigations.create({ conversationId: '77', customerId: 'u' })
     await audit.record({ investigationId: inv.id, type: 'created', at: 1000 })
     await audit.record({ investigationId: inv.id, type: 'guidance', data: { decision: 'resolved' }, at: 1001 })
     // a job whose stored payload carries the conversation it processed
@@ -214,11 +214,11 @@ describe('admin API', () => {
     const res = await fetch(`${base}/admin/jobs/${jobId}/logs`, { headers: bearer })
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      conversationId: number
+      conversationId: string
       investigationId: string
       entries: Array<{ type: string }>
     }
-    expect(body.conversationId).toBe(77)
+    expect(body.conversationId).toBe('77')
     expect(body.investigationId).toBe(inv.id)
     expect(body.entries.map((e) => e.type)).toEqual(['created', 'guidance'])
 

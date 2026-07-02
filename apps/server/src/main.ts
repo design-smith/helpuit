@@ -14,23 +14,33 @@ import {
   DrizzleConfigAudit,
   DrizzleRestartFlag,
   DrizzleAlertHistory,
+  DrizzleEmbeddingRepository,
 } from '@helpuit/db'
+import { listOpenIssues } from '@helpuit/github'
 import { SecretBox, deriveKey } from '@helpuit/crypto'
 import { Holder, ConfigSupervisor } from '@helpuit/runtime-config'
 import {
   buildOrchestrator,
+  buildIntercomConnection,
+  buildFreshdeskConnection,
+  buildHubSpotConnection,
+  buildZendeskConnection,
   buildGitHubWebhookHandler,
   buildAdminApi,
   resolveAdminToken,
   provisionManifest,
   provisionDocs,
   autoSetupChatwoot,
+  buildEmbedder,
+  sweepLinkDocs,
+  syncIssueEmbeddings,
+  githubOptionsFromConfig,
 } from '@helpuit/composition'
 import { RateLimiter } from '@helpuit/budget'
 import type { BrowserDriver } from '@helpuit/reproduction'
 import { createMetrics, AlertEngine, WebhookAlertSink, type AlertSink } from '@helpuit/observability'
 import { Worker } from '@helpuit/queue'
-import { buildServer } from './server.js'
+import { buildServer, type WebhookConnection } from './server.js'
 import { ActivityBus } from './activity.js'
 import { isWeakEncryptionKey } from './setup/keys.js'
 import { RESTART_EXIT_CODE } from './supervisor-loop.js'
@@ -45,6 +55,7 @@ function resolveWebDir(): string | undefined {
 
 const DAY_MS = 86_400_000
 const ALERT_INTERVAL_MS = 300_000 // evaluate operational alerts every 5 minutes
+const POLL_INTERVAL_MS = 60_000 // poll each poll-only platform (Freshdesk, HubSpot) every minute
 
 /**
  * Production entrypoint: load config, open the database, build the real
@@ -171,6 +182,26 @@ async function main(): Promise<void> {
     restartFlag,
   })
 
+  // Second support platform (Intercom): built once at boot from config. Its
+  // orchestrator shares every L1–L4 collaborator but replies through the Intercom
+  // client and namespaces state `intercom:<id>`. The worker dispatches to it by
+  // connectionId; Chatwoot jobs (no connectionId) use the live-swappable holder.
+  // ponytail: built once — a change to Intercom creds needs a restart (the holder's
+  //   live swap covers Chatwoot). Add a per-connection holder if that bites.
+  const intercomConnection = buildIntercomConnection(config)
+  const freshdeskConnection = buildFreshdeskConnection(config)
+  const hubspotConnection = buildHubSpotConnection(config)
+  const zendeskConnection = buildZendeskConnection(config)
+  const connectionOrchestrators = new Map<string, ReturnType<typeof buildOrchestrator>>()
+  for (const connection of [intercomConnection, freshdeskConnection, hubspotConnection, zendeskConnection]) {
+    if (connection !== undefined) {
+      connectionOrchestrators.set(
+        connection.connectionId,
+        buildOrchestrator(config, { db: handle.db, manifest, docsIndex: docs.index, browserDriver, connection }),
+      )
+    }
+  }
+
   const idempotency = new DrizzleProcessedEvents(handle.db, 'chatwoot')
 
   // Real-time activity feed (SSE): the worker publishes outcomes here as it
@@ -189,11 +220,15 @@ async function main(): Promise<void> {
     queue,
     {
       investigation: async (job) => {
-        const { payload, context } = job.payload as {
+        const { payload, context, connectionId } = job.payload as {
           payload: unknown
           context: { customAttributes?: Record<string, unknown> }
+          connectionId?: string
         }
-        const result = await holder.get().handleInbound(payload, context)
+        // Route to the connection's orchestrator; Chatwoot (no connectionId) → the holder.
+        const orchestrator =
+          connectionId !== undefined ? connectionOrchestrators.get(connectionId) ?? holder.get() : holder.get()
+        const result = await orchestrator.handleInbound(payload, context)
         const outcome = (result as { outcome?: unknown } | undefined)?.outcome
         if (typeof outcome === 'string') {
           metrics.recordOutcome(outcome)
@@ -214,6 +249,48 @@ async function main(): Promise<void> {
   const webDir = resolveWebDir()
   if (webDir === undefined) {
     console.warn('operator console UI not built — run `pnpm --filter @helpuit/web build` (serving API only for now).')
+  }
+
+  // Webhook-based platform connections (Intercom, Zendesk, …) behind /webhooks/:connectionId:
+  // same async intake as Chatwoot, signature-verified per the adapter and tagged with
+  // connectionId so the worker routes to the right orchestrator. Each is live-toggled.
+  const webhookConnections: Record<string, WebhookConnection> = {}
+  const enqueueConnection =
+    (connectionId: string): WebhookConnection['intake'] =>
+    (payload, context) => {
+      activity.publish({ type: 'received', at: Date.now(), data: {} })
+      return queue.enqueue({ type: 'investigation', payload: { connectionId, payload, context } })
+    }
+  const connectionRateLimiter = (): RateLimiter =>
+    new RateLimiter({ limit: config.budget.rateLimit.max, windowMs: config.budget.rateLimit.windowMs })
+  if (intercomConnection !== undefined) {
+    webhookConnections[intercomConnection.connectionId] = {
+      intake: enqueueConnection(intercomConnection.connectionId),
+      verify: intercomConnection.verify,
+      extractContext: intercomConnection.extractContext,
+      enabled: () => supervisor.currentConfig().integrations.intercom,
+      idempotency: new DrizzleProcessedEvents(handle.db, 'intercom'),
+      rateLimiter: connectionRateLimiter(),
+      // Intercom fires a top-level notification id (idempotency) + a conversation id (rate-limit).
+      eventId: (p) => (p as { id?: string }).id,
+      rateLimitKey: (p) => (p as { data?: { item?: { id?: string } } }).data?.item?.id,
+    }
+  }
+  if (zendeskConnection !== undefined) {
+    webhookConnections[zendeskConnection.connectionId] = {
+      intake: enqueueConnection(zendeskConnection.connectionId),
+      verify: zendeskConnection.verify,
+      extractContext: zendeskConnection.extractContext,
+      enabled: () => supervisor.currentConfig().integrations.zendesk,
+      idempotency: new DrizzleProcessedEvents(handle.db, 'zendesk'),
+      rateLimiter: connectionRateLimiter(),
+      // The trigger sets event_id for dedup (when available); ticket id is the rate-limit key.
+      eventId: (p) => (p as { event_id?: string }).event_id,
+      rateLimitKey: (p) => {
+        const t = (p as { ticket_id?: string | number }).ticket_id
+        return t === undefined ? undefined : String(t)
+      },
+    }
   }
 
   const app = buildServer({
@@ -261,6 +338,7 @@ async function main(): Promise<void> {
       // but never enqueued (read from the supervisor's live config, no restart).
       enabled: () => supervisor.currentConfig().integrations.chatwoot,
     },
+    connections: Object.keys(webhookConnections).length > 0 ? webhookConnections : undefined,
     github: {
       handle: buildGitHubWebhookHandler(config, { db: handle.db }),
       secret: config.github.webhookSecret,
@@ -305,6 +383,31 @@ async function main(): Promise<void> {
     retentionTimer.unref() // never keep the process alive just for the sweep
   }
 
+  // Knowledge sweep: re-scrape link docs and re-embed open GitHub issues at boot
+  // and daily, keeping semantic retrieval and the known-issue matcher fresh.
+  // Boot-safe and non-blocking: a failed sweep logs and the last-good corpus stays.
+  const embedding = buildEmbedder(config)
+  const knowledgeSweep = async (): Promise<void> => {
+    try {
+      const links = await sweepLinkDocs({ docs })
+      let issues: { embedded: number; removed: number } | undefined
+      if (embedding !== undefined && config.integrations.github) {
+        issues = await syncIssueEmbeddings({
+          listIssues: () => listOpenIssues(githubOptionsFromConfig(config)),
+          embedder: embedding.embedder,
+          store: new DrizzleEmbeddingRepository(handle.db),
+          model: embedding.model,
+        })
+      }
+      app.log.info({ links, issues }, 'knowledge sweep complete')
+    } catch (error) {
+      app.log.error({ err: error }, 'knowledge sweep failed')
+    }
+  }
+  void knowledgeSweep()
+  const knowledgeTimer = setInterval(() => void knowledgeSweep(), DAY_MS)
+  knowledgeTimer.unref()
+
   // Operational alerting: evaluate budget/repro-failure/escalation thresholds over
   // a rolling 24h window and fire to a webhook (if configured) or the logs. Reads
   // the LIVE config each tick (via the supervisor) so threshold/budget changes
@@ -345,8 +448,44 @@ async function main(): Promise<void> {
   const alertTimer = setInterval(() => void evaluateAlerts(), ALERT_INTERVAL_MS)
   alertTimer.unref()
 
+  // Poll-only platforms (Freshdesk, HubSpot) have no inbound webhook — poll each for
+  // new customer messages and feed them into the same async pipeline (deduped by
+  // messageId, dispatched by connectionId). Each is live-toggled via the supervisor.
+  // ponytail: in-memory cursor per connection starting at boot — a restart re-polls
+  //   from "now", so messages that arrived while down are missed (dedup only prevents
+  //   re-processing). Persist the cursor if that gap matters.
+  const pollTimers: Array<ReturnType<typeof setInterval>> = []
+  for (const connection of [freshdeskConnection, hubspotConnection]) {
+    if (connection?.poll === undefined) continue
+    const poll = connection.poll
+    const { connectionId, extractContext } = connection
+    const events = new DrizzleProcessedEvents(handle.db, connectionId)
+    let cursor = new Date().toISOString()
+    const runPoll = async (): Promise<void> => {
+      const live = supervisor.currentConfig().integrations as Record<string, boolean | undefined>
+      if (live[connectionId] === false) return
+      const nextCursor = new Date().toISOString()
+      try {
+        for (const m of await poll(cursor)) {
+          if (!(await events.claim(m.messageId))) continue // already handled (overlapping poll)
+          const context = extractContext?.(m) ?? {}
+          activity.publish({ type: 'received', at: Date.now(), data: { conversationId: m.conversationId } })
+          await queue.enqueue({ type: 'investigation', payload: { connectionId, payload: m, context } })
+        }
+        cursor = nextCursor // advance only after a clean poll so a failure re-covers the same window
+      } catch (error) {
+        app.log.error({ err: error, connectionId }, 'platform poll failed')
+      }
+    }
+    void runPoll()
+    const timer = setInterval(() => void runPoll(), POLL_INTERVAL_MS)
+    timer.unref()
+    pollTimers.push(timer)
+  }
+
   const shutdown = async (): Promise<void> => {
     if (retentionTimer !== undefined) clearInterval(retentionTimer)
+    for (const timer of pollTimers) clearInterval(timer)
     clearInterval(alertTimer)
     await app.close() // stop accepting new webhooks (forceCloseConnections drops SSE/keep-alives)
     await worker.stop() // drain in-flight investigations

@@ -9,15 +9,28 @@
 export const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS helpuit_investigations (
   id TEXT PRIMARY KEY,
-  conversation_id INTEGER NOT NULL,
+  conversation_id TEXT NOT NULL,
   customer_id TEXT,
   status TEXT NOT NULL,
   level TEXT NOT NULL,
   classification TEXT,
   confidence REAL,
+  case_json TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS helpuit_embeddings (
+  id TEXT PRIMARY KEY,
+  owner_kind TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  vec BLOB NOT NULL,
+  model TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_owner ON helpuit_embeddings (owner_kind, owner_id);
 
 CREATE TABLE IF NOT EXISTS helpuit_manifests (
   id TEXT PRIMARY KEY,
@@ -38,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_docs_created ON helpuit_docs (created_at);
 CREATE TABLE IF NOT EXISTS helpuit_tickets (
   id TEXT PRIMARY KEY,
   investigation_id TEXT NOT NULL,
-  conversation_id INTEGER NOT NULL,
+  conversation_id TEXT NOT NULL,
   issue_number INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_issue ON helpuit_tickets (issue_number);
@@ -103,7 +116,7 @@ CREATE TABLE IF NOT EXISTS helpuit_processed_webhook_events (
 );
 
 CREATE TABLE IF NOT EXISTS helpuit_conversation_controls (
-  conversation_id INTEGER PRIMARY KEY,
+  conversation_id TEXT PRIMARY KEY,
   paused INTEGER NOT NULL,
   note TEXT,
   updated_at INTEGER NOT NULL
@@ -112,7 +125,7 @@ CREATE TABLE IF NOT EXISTS helpuit_conversation_controls (
 CREATE TABLE IF NOT EXISTS helpuit_issue_drafts (
   id TEXT PRIMARY KEY,
   investigation_id TEXT NOT NULL,
-  conversation_id INTEGER NOT NULL,
+  conversation_id TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
   labels TEXT NOT NULL,
@@ -190,6 +203,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_at ON helpuit_alerts (at);
 export const COLUMN_BACKFILL: ReadonlyArray<{ table: string; column: string; type: string }> = [
   { table: 'helpuit_docs', column: 'source', type: 'TEXT' },
   { table: 'helpuit_docs', column: 'external_id', type: 'TEXT' },
+  { table: 'helpuit_investigations', column: 'case_json', type: 'TEXT' },
 ]
 
 /**
@@ -199,6 +213,6 @@ export const COLUMN_BACKFILL: ReadonlyArray<{ table: string; column: string; typ
  * them would fail with "no such column". The startup runner applies these only
  * AFTER the columns are backfilled. All `IF NOT EXISTS`, so safe every boot.
  */
-export const BACKFILL_INDEXES: ReadonlyArray<string> = [
-  'CREATE INDEX IF NOT EXISTS idx_docs_source ON helpuit_docs (source, external_id)',
+export const BACKFILL_INDEXES: ReadonlyArray<{ table: string; sql: string }> = [
+  { table: 'helpuit_docs', sql: 'CREATE INDEX IF NOT EXISTS idx_docs_source ON helpuit_docs (source, external_id)' },
 ]

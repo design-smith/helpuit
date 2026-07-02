@@ -4,7 +4,7 @@ import type { Db } from './client.js'
 import { docs } from './schema.js'
 
 /** Where a grounding doc came from. `repo` = re-derived each boot (not persisted here). */
-export type DocSource = 'upload' | 'gdrive' | 'dropbox' | 'sharepoint' | 'repo'
+export type DocSource = 'upload' | 'gdrive' | 'dropbox' | 'sharepoint' | 'repo' | 'link'
 
 /** A persisted grounding doc as the console reads it. */
 export interface DocRecord {

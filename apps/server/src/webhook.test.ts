@@ -39,14 +39,13 @@ function token(userId: string): string {
 }
 
 async function liveServer(opts: { rateLimiter?: RateLimiter; metrics?: Metrics; chatwootEnabled?: () => boolean } = {}) {
-  const llmUrl = await startServer((_req, res) => {
+  const llmUrl = await startServer((_req, res, body) => {
+    const system = (JSON.parse(body) as { messages: Array<{ content: string }> }).messages[0]?.content ?? ''
+    const content = system.includes('routing brain')
+      ? '{"directives":[{"kind":"compose_reply","intent":"answer"}]}'
+      : 'Click Save on the billing page.'
     res.setHeader('content-type', 'application/json')
-    res.end(
-      JSON.stringify({
-        choices: [{ message: { content: '{"message":"Click Save on the billing page.","confidence":0.9}' } }],
-        usage: {},
-      }),
-    )
+    res.end(JSON.stringify({ choices: [{ message: { content } }], usage: {} }))
   })
   const chatwootReplies: string[] = []
   const chatwootUrl = await startServer((_req, res, body) => {
@@ -194,7 +193,7 @@ describe('POST /webhooks/chatwoot — live L1 round-trip', () => {
     expect(scrape.headers.get('content-type')).toContain('text/plain')
     const text = await scrape.text()
     expect(text).toContain('helpuit_webhooks_total{source="chatwoot"} 1')
-    expect(text).toContain('helpuit_outcomes_total{outcome="guided"} 1')
+    expect(text).toContain('helpuit_outcomes_total{outcome="replied"} 1')
   })
 
   it('rejects an oversized body', async () => {

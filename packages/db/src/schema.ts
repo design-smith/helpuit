@@ -1,15 +1,31 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, blob } from 'drizzle-orm/sqlite-core'
 
 /** Core investigation record (mirrors the `Investigation` contract). */
 export const investigations = sqliteTable('helpuit_investigations', {
   id: text('id').primaryKey(),
-  conversationId: integer('conversation_id').notNull(),
+  conversationId: text('conversation_id').notNull(),
   customerId: text('customer_id'),
   status: text('status').notNull(),
   level: text('level').notNull(),
   classification: text('classification'),
   confidence: real('confidence'),
+  /** Conversation-scoped CaseMemory JSON (the new brain's working memory); null on ladder-era rows. */
+  caseJson: text('case_json'),
   createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** Chunk embeddings for the semantic index — one table, namespaced by owner kind (doc/issue/case). */
+export const embeddings = sqliteTable('helpuit_embeddings', {
+  id: text('id').primaryKey(),
+  ownerKind: text('owner_kind').notNull(),
+  ownerId: text('owner_id').notNull(),
+  seq: integer('seq').notNull(),
+  text: text('text').notNull(),
+  /** Float32 little-endian bytes. */
+  vec: blob('vec', { mode: 'buffer' }).notNull(),
+  /** Embedding model id — a mismatch means re-embed. */
+  model: text('model').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
 
@@ -36,7 +52,7 @@ export const docs = sqliteTable('helpuit_docs', {
 export const tickets = sqliteTable('helpuit_tickets', {
   id: text('id').primaryKey(),
   investigationId: text('investigation_id').notNull(),
-  conversationId: integer('conversation_id').notNull(),
+  conversationId: text('conversation_id').notNull(),
   issueNumber: integer('issue_number'),
 })
 
@@ -105,7 +121,7 @@ export const processedWebhookEvents = sqliteTable('helpuit_processed_webhook_eve
 
 /** Founder takeover: conversations the human has paused from autonomous handling. */
 export const conversationControls = sqliteTable('helpuit_conversation_controls', {
-  conversationId: integer('conversation_id').primaryKey(),
+  conversationId: text('conversation_id').primaryKey(),
   paused: integer('paused').notNull(),
   note: text('note'),
   updatedAt: integer('updated_at').notNull(),
@@ -118,7 +134,7 @@ export const conversationControls = sqliteTable('helpuit_conversation_controls',
 export const issueDrafts = sqliteTable('helpuit_issue_drafts', {
   id: text('id').primaryKey(),
   investigationId: text('investigation_id').notNull(),
-  conversationId: integer('conversation_id').notNull(),
+  conversationId: text('conversation_id').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull(),
   /** JSON-encoded string[] of GitHub labels. */

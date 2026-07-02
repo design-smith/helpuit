@@ -12,7 +12,7 @@ async function repo() {
 
 const sample = {
   investigationId: 'inv-1',
-  conversationId: 42,
+  conversationId: '42',
   title: '[new_bug] Export button does nothing',
   body: '## Summary\nCSV export fails',
   labels: ['helpuit', 'new_bug'],

@@ -81,8 +81,8 @@ models:
   handle = await createDb(':memory:')
   const ticketing = new DrizzleTicketing(handle.db)
   for (const [investigationId, conversationId] of [
-    ['inv-1', 11],
-    ['inv-2', 22],
+    ['inv-1', '11'],
+    ['inv-2', '22'],
   ] as const) {
     const ticket = await ticketing.create({ investigationId, conversationId })
     await ticketing.linkToIssue(ticket.id, 555)

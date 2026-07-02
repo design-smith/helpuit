@@ -18,7 +18,7 @@ async function repoWithClock(now: () => number) {
 describe('DrizzleInvestigationRepository', () => {
   it('creates and reads back an investigation from a real SQLite database', async () => {
     const repo = await repoWithClock(() => 1000)
-    const created = await repo.create({ conversationId: 42, customerId: 'u1' })
+    const created = await repo.create({ conversationId: '42', customerId: 'u1' })
     const fetched = await repo.get(created.id)
 
     expect(fetched).toEqual(created)
@@ -29,17 +29,41 @@ describe('DrizzleInvestigationRepository', () => {
 
   it('returns null for an unknown id and assigns distinct ids', async () => {
     const repo = await repoWithClock(() => 1)
-    const a = await repo.create({ conversationId: 1 })
-    const b = await repo.create({ conversationId: 2 })
+    const a = await repo.create({ conversationId: '1' })
+    const b = await repo.create({ conversationId: '2' })
     expect(a.id).not.toBe(b.id)
     expect(await repo.get(investigationId('nope'))).toBeNull()
     expect((await repo.get(a.id))?.customerId).toBeNull()
   })
 
+  it('reuses the open investigation per conversation (the Case), but never a concluded one', async () => {
+    const repo = await repoWithClock(() => 1)
+
+    const first = await repo.getOrCreateForConversation('7', 'u1')
+    const again = await repo.getOrCreateForConversation('7')
+    expect(again.id).toBe(first.id) // same conversation, same open case
+
+    const other = await repo.getOrCreateForConversation('8')
+    expect(other.id).not.toBe(first.id) // different conversation, different case
+
+    await repo.setStatus(first.id, 'resolved')
+    const fresh = await repo.getOrCreateForConversation('7')
+    expect(fresh.id).not.toBe(first.id) // concluded cases are never reused
+  })
+
+  it('round-trips the case memory JSON (null until first saved)', async () => {
+    const repo = await repoWithClock(() => 1)
+    const inv = await repo.getOrCreateForConversation('7')
+
+    expect(await repo.loadCase(inv.id)).toBeNull()
+    await repo.saveCase(inv.id, '{"findings":[{"summary":"docs cover refunds"}]}')
+    expect(await repo.loadCase(inv.id)).toBe('{"findings":[{"summary":"docs cover refunds"}]}')
+  })
+
   it('persists level/status transitions and a classification, bumping updatedAt', async () => {
     let clock = 1000
     const repo = await repoWithClock(() => clock)
-    const inv = await repo.create({ conversationId: 1 })
+    const inv = await repo.create({ conversationId: '1' })
     clock = 2000
     const moved = await repo.setLevel(inv.id, 'account')
     expect(moved.level).toBe('account')
@@ -69,22 +93,22 @@ describe('DrizzleInvestigationRepository', () => {
       const repo = await repoWithClock(() => clock)
       for (let i = 0; i < 5; i++) {
         clock = 1000 + i
-        await repo.create({ conversationId: i })
+        await repo.create({ conversationId: String(i) })
       }
       const page = await repo.list({}, { limit: 2 })
       expect(page.total).toBe(5)
       expect(page.items).toHaveLength(2)
-      expect(page.items[0]!.conversationId).toBe(4) // newest first
-      expect(page.items[1]!.conversationId).toBe(3)
+      expect(page.items[0]!.conversationId).toBe('4') // newest first
+      expect(page.items[1]!.conversationId).toBe('3')
 
       const oldest = await repo.list({}, { order: 'oldest', limit: 1 })
-      expect(oldest.items[0]!.conversationId).toBe(0)
+      expect(oldest.items[0]!.conversationId).toBe('0')
     })
 
     it('filters by status and classification', async () => {
       const repo = await repoWithClock(() => 1)
-      const a = await repo.create({ conversationId: 1 })
-      const b = await repo.create({ conversationId: 2 })
+      const a = await repo.create({ conversationId: '1' })
+      const b = await repo.create({ conversationId: '2' })
       await repo.setStatus(a.id, 'escalated')
       await repo.classify(a.id, 'new_bug', 0.9)
       await repo.setStatus(b.id, 'resolved')
@@ -107,13 +131,13 @@ describe('DrizzleInvestigationRepository', () => {
       const links = new DrizzleGithubLinks(db)
       const drafts = new DrizzleDraftRepository(db)
 
-      const a = await repo.create({ conversationId: 1 }) // becomes a ticket
-      const b = await repo.create({ conversationId: 2 }) // has a pending draft
-      const c = await repo.create({ conversationId: 3 }) // has an open issue
-      const plain = await repo.create({ conversationId: 4 }) // nothing attached
+      const a = await repo.create({ conversationId: '1' }) // becomes a ticket
+      const b = await repo.create({ conversationId: '2' }) // has a pending draft
+      const c = await repo.create({ conversationId: '3' }) // has an open issue
+      const plain = await repo.create({ conversationId: '4' }) // nothing attached
 
-      await tickets.create({ investigationId: a.id, conversationId: 1 })
-      await drafts.save({ investigationId: b.id, conversationId: 2, title: 't', body: 'x', labels: ['l'], severity: 'medium' })
+      await tickets.create({ investigationId: a.id, conversationId: '1' })
+      await drafts.save({ investigationId: b.id, conversationId: '2', title: 't', body: 'x', labels: ['l'], severity: 'medium' })
       await links.link({ investigationId: c.id, issueNumber: 7, issueUrl: 'https://github.com/o/r/issues/7' }) // status null ⇒ open
 
       const byId = Object.fromEntries((await repo.listEnriched({})).items.map((i) => [i.id, i]))

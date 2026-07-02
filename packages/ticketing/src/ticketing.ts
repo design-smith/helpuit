@@ -1,14 +1,14 @@
 export interface Ticket {
   id: string
   investigationId: string
-  conversationId: number
+  conversationId: string
   /** The GitHub issue this ticket is linked to (many tickets → one issue), or null. */
   issueNumber: number | null
 }
 
 export interface CreateTicketInput {
   investigationId: string
-  conversationId: number
+  conversationId: string
 }
 
 /** Storage-agnostic ticketing contract. Satisfied by both the in-memory and DB impls. */

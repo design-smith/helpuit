@@ -5,10 +5,10 @@ import { investigationId } from '@helpuit/contracts'
 describe('InvestigationRepository', () => {
   it('creates an investigation that starts open at the guidance level', async () => {
     const repo = new InMemoryInvestigationRepository({ now: () => 1000 })
-    const inv = await repo.create({ conversationId: 42 })
+    const inv = await repo.create({ conversationId: '42' })
 
     expect(inv.id).toBeTruthy()
-    expect(inv.conversationId).toBe(42)
+    expect(inv.conversationId).toBe('42')
     expect(inv.status).toBe('open')
     expect(inv.level).toBe('guidance')
     expect(inv.classification).toBeNull()
@@ -17,22 +17,43 @@ describe('InvestigationRepository', () => {
 
   it('gets a created investigation and returns null for an unknown id', async () => {
     const repo = new InMemoryInvestigationRepository()
-    const inv = await repo.create({ conversationId: 1, customerId: 'cust-9' })
+    const inv = await repo.create({ conversationId: '1', customerId: 'cust-9' })
     expect(await repo.get(inv.id)).toEqual(inv)
     expect(await repo.get(investigationId('missing'))).toBeNull()
   })
 
   it('assigns distinct ids to successive investigations', async () => {
     const repo = new InMemoryInvestigationRepository()
-    const a = await repo.create({ conversationId: 1 })
-    const b = await repo.create({ conversationId: 2 })
+    const a = await repo.create({ conversationId: '1' })
+    const b = await repo.create({ conversationId: '2' })
     expect(a.id).not.toBe(b.id)
+  })
+
+  it('reuses the open case per conversation, never a concluded one (parity with the Drizzle impl)', async () => {
+    const repo = new InMemoryInvestigationRepository()
+    const first = await repo.getOrCreateForConversation('7', 'u1')
+    expect((await repo.getOrCreateForConversation('7')).id).toBe(first.id)
+    expect((await repo.getOrCreateForConversation('8')).id).not.toBe(first.id)
+
+    await repo.setStatus(first.id, 'resolved')
+    expect((await repo.getOrCreateForConversation('7')).id).not.toBe(first.id)
+  })
+
+  it('round-trips case memory JSON and refuses to save onto a missing case', async () => {
+    const repo = new InMemoryInvestigationRepository()
+    const inv = await repo.getOrCreateForConversation('7')
+
+    expect(await repo.loadCase(inv.id)).toBeNull()
+    await repo.saveCase(inv.id, '{"notes":"turn one"}')
+    expect(await repo.loadCase(inv.id)).toBe('{"notes":"turn one"}')
+
+    await expect(repo.saveCase(investigationId('missing'), '{}')).rejects.toThrow(InvestigationNotFoundError)
   })
 
   it('transitions level and bumps updatedAt', async () => {
     let clock = 1000
     const repo = new InMemoryInvestigationRepository({ now: () => clock })
-    const inv = await repo.create({ conversationId: 1 })
+    const inv = await repo.create({ conversationId: '1' })
     clock = 2000
     const moved = await repo.setLevel(inv.id, 'account')
     expect(moved.level).toBe('account')
@@ -42,14 +63,14 @@ describe('InvestigationRepository', () => {
 
   it('updates status', async () => {
     const repo = new InMemoryInvestigationRepository()
-    const inv = await repo.create({ conversationId: 1 })
+    const inv = await repo.create({ conversationId: '1' })
     const escalated = await repo.setStatus(inv.id, 'escalated')
     expect(escalated.status).toBe('escalated')
   })
 
   it('records a classification with confidence', async () => {
     const repo = new InMemoryInvestigationRepository()
-    const inv = await repo.create({ conversationId: 1 })
+    const inv = await repo.create({ conversationId: '1' })
     const classified = await repo.classify(inv.id, 'new_bug', 0.8)
     expect(classified.classification).toBe('new_bug')
     expect(classified.confidence).toBe(0.8)

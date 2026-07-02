@@ -1,12 +1,17 @@
-import type { StaticAnalysisModel, StaticFindings } from '@helpuit/static-investigation'
+import type { CodeVerdict, StaticAnalysisModel, StaticFindings } from '@helpuit/static-investigation'
 import type { ChatModel } from './types.js'
 
 const SYSTEM_PROMPT = [
   'You are a senior engineer doing static code analysis to find a defect.',
   'Given the complaint and the feature code, respond as compact JSON:',
-  '{"hypothesis": string, "suspectedFiles": string[], "confidence": number between 0 and 1}.',
+  '{"hypothesis": string, "suspectedFiles": string[], "confidence": number between 0 and 1,',
+  '"explanation": string, "verdict": "user_error_or_prerequisite"|"actual_bug"|"explains_behavior"}.',
   'confidence reflects how strongly the code supports the hypothesis; use a low value if the code does not explain it.',
+  'explanation is CUSTOMER-SAFE product language: what the product does and what the customer can do — never file names, code, or internals.',
+  'verdict: user_error_or_prerequisite when the customer is missing a step; actual_bug when the code is wrong; explains_behavior otherwise.',
 ].join(' ')
+
+const VERDICTS: ReadonlyArray<CodeVerdict> = ['user_error_or_prerequisite', 'actual_bug', 'explains_behavior']
 
 function clamp01(n: number): number {
   if (Number.isNaN(n)) return 0
@@ -22,18 +27,33 @@ function parseStatic(text: string, fallbackFiles: string[]): StaticFindings {
         hypothesis?: unknown
         suspectedFiles?: unknown
         confidence?: unknown
+        explanation?: unknown
+        verdict?: unknown
       }
       if (typeof json.hypothesis === 'string') {
         const files = Array.isArray(json.suspectedFiles)
           ? json.suspectedFiles.filter((f): f is string => typeof f === 'string')
           : fallbackFiles
-        return { hypothesis: json.hypothesis, suspectedFiles: files, confidence: clamp01(Number(json.confidence)) }
+        return {
+          hypothesis: json.hypothesis,
+          suspectedFiles: files,
+          confidence: clamp01(Number(json.confidence)),
+          // Product layer, defensively defaulted: a bogus verdict never invents a bug.
+          explanation: typeof json.explanation === 'string' && json.explanation !== '' ? json.explanation : json.hypothesis,
+          verdict: VERDICTS.includes(json.verdict as CodeVerdict) ? (json.verdict as CodeVerdict) : 'explains_behavior',
+        }
       }
     } catch {
       // fall through
     }
   }
-  return { hypothesis: text.trim(), suspectedFiles: fallbackFiles, confidence: 0.2 }
+  return {
+    hypothesis: text.trim(),
+    suspectedFiles: fallbackFiles,
+    confidence: 0.2,
+    explanation: text.trim(),
+    verdict: 'explains_behavior',
+  }
 }
 
 /** Adapt a `ChatModel` into the `StaticAnalysisModel` the static investigator depends on. */

@@ -39,7 +39,7 @@ describe('HttpChatwootClient', () => {
     const baseUrl = await start(200, (c) => (captured = c))
     const client = new HttpChatwootClient({ baseUrl, accountId: 3, apiAccessToken: 'tok' })
 
-    await client.sendReply(7, 'hello there')
+    await client.sendReply('7', 'hello there')
 
     expect(captured?.url).toBe('/api/v1/accounts/3/conversations/7/messages')
     expect(captured?.method).toBe('POST')
@@ -51,14 +51,14 @@ describe('HttpChatwootClient', () => {
     let captured: Captured | undefined
     const baseUrl = await start(200, (c) => (captured = c))
     const client = new HttpChatwootClient({ baseUrl, accountId: 1, apiAccessToken: 't' })
-    await client.sendPrivateNote(5, 'internal')
+    await client.sendPrivateNote('5', 'internal')
     expect(captured?.body.private).toBe(true)
   })
 
   it('throws on a non-2xx response', async () => {
     const baseUrl = await start(400, () => {}) // 400 is non-retryable → fails fast
     const client = new HttpChatwootClient({ baseUrl, accountId: 1, apiAccessToken: 't' })
-    await expect(client.sendReply(1, 'x')).rejects.toThrow(/Chatwoot message failed/)
+    await expect(client.sendReply('1', 'x')).rejects.toThrow(/Chatwoot message failed/)
   })
 
   it('fetches + normalizes the conversation transcript (GET messages)', async () => {
@@ -82,7 +82,7 @@ describe('HttpChatwootClient', () => {
     const port = typeof address === 'object' && address !== null ? address.port : 0
     const client = new HttpChatwootClient({ baseUrl: `http://127.0.0.1:${port}`, accountId: 3, apiAccessToken: 'tok' })
 
-    const msgs = await client.getMessages(7)
+    const msgs = await client.getMessages('7')
 
     expect(seen).toMatchObject({ method: 'GET', url: '/api/v1/accounts/3/conversations/7/messages', token: 'tok' })
     expect(msgs).toEqual([
@@ -116,7 +116,7 @@ describe('HttpChatwootClient', () => {
     const baseUrl = `http://127.0.0.1:${port}`
 
     const client = new HttpChatwootClient({ baseUrl, accountId: 1, apiAccessToken: 'tok' })
-    await client.sendReply(7, 'Here is your answer')
+    await client.sendReply('7', 'Here is your answer')
 
     expect(hits).toBe(2) // one failure + one success, transparently retried
     expect(captured).toEqual(['Here is your answer'])

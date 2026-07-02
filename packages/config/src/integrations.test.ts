@@ -29,7 +29,7 @@ const ENV = {
 describe('integrations enable-map', () => {
   it('defaults every integration ON when the section is absent (back-compat)', () => {
     const config = parseConfig(YAML, ENV)
-    expect(config.integrations).toEqual({ github: true, chatwoot: true, identity: true, llm: true })
+    expect(config.integrations).toEqual({ github: true, chatwoot: true, intercom: true, freshdesk: true, hubspot: true, zendesk: true, identity: true, llm: true })
   })
 
   it('honors a partial override, leaving the rest ON', () => {
@@ -38,6 +38,6 @@ describe('integrations enable-map', () => {
       env: ENV,
       structural: { integrations: { github: false } },
     }).config
-    expect(config.integrations).toEqual({ github: false, chatwoot: true, identity: true, llm: true })
+    expect(config.integrations).toEqual({ github: false, chatwoot: true, intercom: true, freshdesk: true, hubspot: true, zendesk: true, identity: true, llm: true })
   })
 })

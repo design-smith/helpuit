@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createDb, type DbHandle } from '@helpuit/db'
-import { GuidanceAgent, type GuidanceModel } from '@helpuit/guidance'
 import type { HelpuitConfig } from '@helpuit/config'
 import { provisionDocs } from './provision-docs.js'
 
@@ -14,7 +13,8 @@ afterEach(() => {
 })
 
 // External LLM seam; grounding sources come from the REAL index retrieval.
-const fixedModel: GuidanceModel = { generate: async () => ({ message: 'ok', confidence: 0.9 }) }
+const sourcesFor = async (index: { retrieve(q: string, k?: number): unknown }, q: string) =>
+  ((await index.retrieve(q)) as Array<{ id: string }>).map((h) => h.id)
 
 async function ghServer(tree: string[], contents: Record<string, string>): Promise<string> {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -60,8 +60,7 @@ describe('provisionDocs', () => {
 
     const service = await provisionDocs(configFor(base, ['docs/**/*.md']), { db: handle.db })
 
-    const answer = await new GuidanceAgent(service.index, fixedModel).answer('how do I reset my password?')
-    expect(answer.sources).toContain('docs/guide.md')
+    expect(await sourcesFor(service.index, 'how do I reset my password?')).toContain('docs/guide.md')
   })
 
   it('degrades to persisted docs when the repo is unreachable (no crash)', async () => {
@@ -71,8 +70,7 @@ describe('provisionDocs', () => {
 
     // Boot survived; operator-pasted docs still ground.
     const doc = await service.add({ text: 'Our refund policy allows returns within 30 days.' })
-    const answer = await new GuidanceAgent(service.index, fixedModel).answer('what is the refund policy?')
-    expect(answer.sources).toContain(doc.id)
+    expect(await sourcesFor(service.index, 'what is the refund policy?')).toContain(doc.id)
   })
 
   it('skips the repo fetch entirely when no doc paths are configured', async () => {
@@ -81,7 +79,6 @@ describe('provisionDocs', () => {
     const service = await provisionDocs(configFor('http://127.0.0.1:1', []), { db: handle.db })
 
     const doc = await service.add({ text: 'The data export feature lives under Settings.' })
-    const answer = await new GuidanceAgent(service.index, fixedModel).answer('data export feature')
-    expect(answer.sources).toContain(doc.id)
+    expect(await sourcesFor(service.index, 'data export feature')).toContain(doc.id)
   })
 })

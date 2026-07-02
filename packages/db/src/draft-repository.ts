@@ -10,7 +10,7 @@ export type DraftStatus = 'pending' | 'published' | 'rejected'
 export interface IssueDraftRecord {
   id: string
   investigationId: string
-  conversationId: number
+  conversationId: string
   title: string
   body: string
   labels: string[]
@@ -28,7 +28,7 @@ export interface IssueDraftRecord {
 /** Input to persist a freshly-drafted (pending) issue. */
 export interface SaveDraftInput {
   investigationId: string
-  conversationId: number
+  conversationId: string
   title: string
   body: string
   labels: string[]

@@ -21,9 +21,9 @@ describe('DrizzleDashboardService', () => {
     const db = handle.db
 
     await db.insert(investigations).values([
-      { id: 'i1', conversationId: 1, status: 'resolved', level: 'l1', classification: 'how_to', createdAt: T - 3, updatedAt: T - 3 },
-      { id: 'i2', conversationId: 2, status: 'escalated', level: 'static_repro', classification: 'new_bug', createdAt: T - 2, updatedAt: T - 2 },
-      { id: 'i3', conversationId: 3, status: 'escalated', level: 'static_repro', classification: 'new_bug', createdAt: T - 1, updatedAt: T - 1 },
+      { id: 'i1', conversationId: '1', status: 'resolved', level: 'l1', classification: 'how_to', createdAt: T - 3, updatedAt: T - 3 },
+      { id: 'i2', conversationId: '2', status: 'escalated', level: 'static_repro', classification: 'new_bug', createdAt: T - 2, updatedAt: T - 2 },
+      { id: 'i3', conversationId: '3', status: 'escalated', level: 'static_repro', classification: 'new_bug', createdAt: T - 1, updatedAt: T - 1 },
     ])
     await db.insert(reproductionAttempts).values([
       { id: 'r1', investigationId: 'i2', sandboxRole: 'admin', reproduced: 1, evidence: null, createdAt: T },
@@ -40,7 +40,7 @@ describe('DrizzleDashboardService', () => {
       { id: 'j1', type: 'investigation', payload: '{}', status: 'done', attempts: 1, maxAttempts: 3, runAfter: T, lastError: null, createdAt: T, updatedAt: T },
       { id: 'j2', type: 'investigation', payload: '{}', status: 'pending', attempts: 0, maxAttempts: 3, runAfter: T, lastError: null, createdAt: T, updatedAt: T },
     ])
-    await db.insert(conversationControls).values({ conversationId: 2, paused: 1, note: null, updatedAt: T })
+    await db.insert(conversationControls).values({ conversationId: '2', paused: 1, note: null, updatedAt: T })
 
     const view = await new DrizzleDashboardService(db).overview()
 
@@ -80,8 +80,8 @@ describe('DrizzleDashboardService', () => {
       { id: 'r3', investigationId: 'i3', sandboxRole: 'admin', reproduced: 1, evidence: null, createdAt: since + 3 },
     ])
     await db.insert(investigations).values([
-      { id: 'i2', conversationId: 1, status: 'escalated', level: 'static_repro', classification: 'new_bug', createdAt: since, updatedAt: since + 10 },
-      { id: 'i9', conversationId: 9, status: 'resolved', level: 'l1', classification: 'how_to', createdAt: since, updatedAt: T },
+      { id: 'i2', conversationId: '1', status: 'escalated', level: 'static_repro', classification: 'new_bug', createdAt: since, updatedAt: since + 10 },
+      { id: 'i9', conversationId: '9', status: 'resolved', level: 'l1', classification: 'how_to', createdAt: since, updatedAt: T },
     ])
 
     const snap = await new DrizzleDashboardService(db).alertSnapshot({ since, dayCap: 1000 })

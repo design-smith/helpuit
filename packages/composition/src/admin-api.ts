@@ -111,8 +111,8 @@ export interface AdminApi {
   rejectDraft(id: string, reason?: string): Promise<DraftActionResult>
 
   listPausedConversations(): Promise<ConversationControl[]>
-  pauseConversation(id: number, note?: string): Promise<void>
-  resumeConversation(id: number): Promise<void>
+  pauseConversation(id: string, note?: string): Promise<void>
+  resumeConversation(id: string): Promise<void>
 
   listJobs(filter: JobListFilter, options: ListOptions): Promise<Page<JobSummary>>
   /** The agent's step trail for a job's conversation (job → conversation → investigation → audit). null = unknown job. */
@@ -178,23 +178,28 @@ export interface AdminApiDeps {
 /** A job's resolved logs: the agent's step trail for the conversation it processed. */
 export interface JobLogs {
   jobId: string
-  conversationId: number | null
+  conversationId: string | null
   investigationId: string | null
   lastError: string | null
   entries: AuditEntryRecord[]
 }
 
-/** Extract the Chatwoot conversation id from an investigation job's stored payload (`{ payload: <webhook body>, context }`). */
-function conversationIdFromJob(payload: unknown): number | null {
+/** Extract the (bare, Chatwoot) conversation id from an investigation job's stored payload (`{ payload: <webhook body>, context }`), matching how the orchestrator keys Chatwoot state. */
+function conversationIdFromJob(payload: unknown): string | null {
   const p = payload as { payload?: { conversation?: { id?: unknown } } } | null
   const id = p?.payload?.conversation?.id
-  return typeof id === 'number' ? id : null
+  if (typeof id === 'number') return String(id)
+  return typeof id === 'string' && id !== '' ? id : null
 }
 
 /** Secret keys cleared when an integration is disconnected (best-effort; missing keys are no-ops). */
 const CONNECTION_SECRETS: Record<string, string[]> = {
   github: ['GITHUB_TOKEN', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_APP_CLIENT_SECRET', 'GITHUB_WEBHOOK_SECRET'],
   chatwoot: ['CHATWOOT_API_TOKEN'],
+  intercom: ['INTERCOM_ACCESS_TOKEN', 'INTERCOM_CLIENT_SECRET'],
+  freshdesk: ['FRESHDESK_API_KEY'],
+  hubspot: ['HUBSPOT_ACCESS_TOKEN'],
+  zendesk: ['ZENDESK_API_TOKEN', 'ZENDESK_WEBHOOK_SECRET'],
   identity: ['IDENTITY_HMAC_SECRET', 'IDENTITY_VERIFY_TOKEN'],
   llm: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'OPENAI_COMPATIBLE_API_KEY'],
   accountData: ['SUPABASE_SERVICE_KEY', 'SUPABASE_OAUTH_ACCESS_TOKEN', 'SUPABASE_OAUTH_REFRESH_TOKEN', 'ACCOUNT_DB_URL', 'QUERY_ROUTES_TOKEN'],

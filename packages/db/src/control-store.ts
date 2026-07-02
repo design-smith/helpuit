@@ -3,7 +3,7 @@ import type { Db } from './client.js'
 import { conversationControls } from './schema.js'
 
 export interface ConversationControl {
-  conversationId: number
+  conversationId: string
   paused: boolean
   note: string | null
   updatedAt: number
@@ -20,15 +20,15 @@ export class DrizzleControlStore {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
-  async pause(conversationId: number, note?: string): Promise<void> {
+  async pause(conversationId: string, note?: string): Promise<void> {
     await this.upsert(conversationId, true, note ?? null)
   }
 
-  async resume(conversationId: number): Promise<void> {
+  async resume(conversationId: string): Promise<void> {
     await this.upsert(conversationId, false, null)
   }
 
-  async isPaused(conversationId: number): Promise<boolean> {
+  async isPaused(conversationId: string): Promise<boolean> {
     const rows = await this.db
       .select()
       .from(conversationControls)
@@ -49,7 +49,7 @@ export class DrizzleControlStore {
     }))
   }
 
-  private async upsert(conversationId: number, paused: boolean, note: string | null): Promise<void> {
+  private async upsert(conversationId: string, paused: boolean, note: string | null): Promise<void> {
     const now = this.now()
     const pausedInt = paused ? 1 : 0
     await this.db

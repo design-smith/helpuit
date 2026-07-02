@@ -28,14 +28,14 @@ describe('DrizzleTicketing', () => {
   it('creates, links many tickets to one issue, and queries them back', async () => {
     handle = await createDb(':memory:')
     const ticketing = new DrizzleTicketing(handle.db)
-    const a = await ticketing.create({ investigationId: 'inv-1', conversationId: 11 })
-    const b = await ticketing.create({ investigationId: 'inv-2', conversationId: 22 })
+    const a = await ticketing.create({ investigationId: 'inv-1', conversationId: '11' })
+    const b = await ticketing.create({ investigationId: 'inv-2', conversationId: '22' })
     expect(a.issueNumber).toBeNull()
 
     await ticketing.linkToIssue(a.id, 99)
     await ticketing.linkToIssue(b.id, 99)
     const linked = await ticketing.ticketsForIssue(99)
-    expect(linked.map((t) => t.conversationId).sort()).toEqual([11, 22])
+    expect(linked.map((t) => t.conversationId).sort()).toEqual(['11', '22'])
   })
 
   it('throws when linking an unknown ticket', async () => {
